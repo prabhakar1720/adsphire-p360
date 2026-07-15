@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: adsphire-p360
+    runtime: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 360 app:app
+    healthCheckPath: /health
+    envVars:
+      - key: TEAM_PASSWORD
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATA_DIR
+        value: /data
+    disk:
+      name: p360-data
+      mountPath: /data
+      sizeGB: 1
