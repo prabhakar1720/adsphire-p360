@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -48,6 +48,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 TOKEN_FILE = DATA_DIR / "prt_tokens.json"
 SAVED_APPS_FILE = DATA_DIR / "saved_apps.json"
+SAVED_EXCEL_META_FILE = DATA_DIR / "saved_excel_config.json"
+SAVED_EXCEL_WORKBOOK_FILE = DATA_DIR / "saved_excel_config.xlsx"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UNZIPPED_BYTES = 50 * 1024 * 1024
 MAX_ZIP_ENTRIES = 250
@@ -92,6 +94,31 @@ def save_json(path: Path, payload) -> None:
         if os.path.exists(temp_name):
             os.unlink(temp_name)
 
+
+
+
+def save_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_name, 0o600)
+        os.replace(temp_name, path)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
+def safe_upload_name(value: str | None) -> str:
+    raw = urllib.parse.unquote(value or "").replace("\\", "/")
+    name = raw.rsplit("/", 1)[-1].strip()
+    if not name.lower().endswith(".xlsx"):
+        name = "P360_Config.xlsx"
+    name = re.sub(r"[^A-Za-z0-9._ -]+", "_", name)[:120]
+    return name or "P360_Config.xlsx"
 
 def csrf_token() -> str:
     token = session.get("csrf_token")
@@ -257,7 +284,7 @@ def readme():
 
 @app.route("/health")
 def health():
-    return jsonify({"ok": True, "service": "Adsphire P360 Hosted Team"})
+    return jsonify({"ok": True, "service": "Adsphire P360 Hosted Team", "saved_excel": SAVED_EXCEL_META_FILE.exists()})
 
 
 @app.route("/api/prts")
@@ -444,9 +471,52 @@ def parse_xlsx(data: bytes) -> dict[str, list[list[object]]]:
     return sheets
 
 
+@app.route("/api/saved-excel-config", methods=["GET", "DELETE"])
+@login_required
+def saved_excel_config():
+    if request.method == "GET":
+        payload = load_json(SAVED_EXCEL_META_FILE, {})
+        if not payload or not payload.get("sheets"):
+            return jsonify({"saved": False, "csrf": csrf_token()})
+        return jsonify({
+            "saved": True,
+            "filename": payload.get("filename", "P360_Config.xlsx"),
+            "saved_at": payload.get("saved_at", ""),
+            "sheets": payload.get("sheets", {}),
+            "csrf": csrf_token(),
+        })
+
+    if not valid_csrf(request.headers.get("X-CSRF-Token")):
+        return jsonify({"error": "Session expired. Reload and retry."}), 403
+    for path in (SAVED_EXCEL_META_FILE, SAVED_EXCEL_WORKBOOK_FILE):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            return jsonify({"error": f"Could not remove saved Excel configuration: {exc}"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/saved-excel-config/download")
+@login_required
+def download_saved_excel_config():
+    payload = load_json(SAVED_EXCEL_META_FILE, {})
+    if not SAVED_EXCEL_WORKBOOK_FILE.exists() or not payload:
+        return jsonify({"error": "No saved Excel configuration is available."}), 404
+    return send_file(
+        SAVED_EXCEL_WORKBOOK_FILE,
+        as_attachment=True,
+        download_name=payload.get("filename", "P360_Config.xlsx"),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @app.route("/config/import", methods=["POST"])
 @login_required
 def import_config():
+    if not valid_csrf(request.headers.get("X-CSRF-Token")):
+        return jsonify({"error": "Session expired. Reload and retry."}), 403
     body = request.get_data(cache=False)
     if not body:
         return jsonify({"error": "Empty upload."}), 400
@@ -454,7 +524,16 @@ def import_config():
         sheets = parse_xlsx(body)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    return jsonify({"sheets": sheets})
+
+    filename = safe_upload_name(request.headers.get("X-P360-Filename"))
+    saved_at = datetime.now(timezone.utc).isoformat()
+    payload = {"filename": filename, "saved_at": saved_at, "sheets": sheets}
+    try:
+        save_bytes(SAVED_EXCEL_WORKBOOK_FILE, body)
+        save_json(SAVED_EXCEL_META_FILE, payload)
+    except OSError as exc:
+        return jsonify({"error": f"The workbook was valid but could not be saved on the server: {exc}"}), 500
+    return jsonify({"saved": True, "filename": filename, "saved_at": saved_at, "sheets": sheets})
 
 
 @app.route("/af/api/<kind>/export/app/<app_id>/<report>/v5")

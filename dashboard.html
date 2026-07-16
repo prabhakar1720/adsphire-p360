@@ -63,11 +63,12 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
 <div class="wrap">
 <header>
   <div class="brand">
-    <h1>Adsphire <span>·</span> P360 Fraud Rate Checker <span class="version">Hosted Team Edition</span></h1>
-    <p>AppsFlyer Pull API · server-side tokens · Excel and saved app configuration</p>
+    <h1>Adsphire <span>·</span> P360 Fraud Rate Checker <span class="version">Hosted Team Edition · Saved Excel</span></h1>
+    <p>AppsFlyer Pull API · server-side tokens · persistent Excel and saved app configuration</p>
   </div>
   <div class="actions">
     <a class="btn ghost" href="/P360_Config_Template.xlsx">↓ Excel Template</a>
+    <a class="btn ghost" id="savedExcelDownload" href="/api/saved-excel-config/download" style="display:none">↓ Saved Excel</a>
     <a class="btn ghost" href="/admin">⚙ Admin</a>
     <button class="btn" id="dlBtn" disabled>↓ Current View CSV</button>
     <button class="btn" id="dlReasonsBtn" disabled>↓ Reasons CSV</button>
@@ -76,13 +77,13 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
 </header>
 
 <section class="panel" id="configPanel">
-  <div class="panel-title"><h2>1 · Excel Configuration</h2><button class="btn ghost danger" id="clearConfig" disabled>Clear Excel rows</button></div>
+  <div class="panel-title"><h2>1 · Persistent Excel Configuration</h2><button class="btn ghost danger" id="clearConfig" disabled>Remove Saved Excel</button></div>
   <div class="grid2">
     <div>
       <div class="drop" id="dropzone" tabindex="0" role="button" aria-label="Upload Excel configuration">
         <input id="fileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-        <strong>Upload Excel Configuration</strong>
-        <p>Click or drop an .xlsx file here.<br>The Apps sheet supplies App ID, App Name, PRT, Media Source/PID and Reporting Timezone. API tokens stay on the server.</p>
+        <strong>Upload or Replace Excel Configuration</strong>
+        <p>Upload once and the workbook will be saved on the backend for the whole team.<br>The Apps sheet supplies App ID, App Name, PRT, Media Source/PID and Reporting Timezone. API tokens stay on the server.</p>
       </div>
       <div class="config-stats">
         <div class="mini"><b id="sAccounts">0</b><span>Backend PRTs</span></div>
@@ -90,7 +91,7 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
         <div class="mini"><b id="sPids">0</b><span>PIDs</span></div>
         <div class="mini"><b id="sPrts">0</b><span>PRTs in config</span></div>
       </div>
-      <div class="notice ok">AppsFlyer tokens are stored on the backend by PRT. The Excel file contains no API token.</div>
+      <div class="notice ok">AppsFlyer tokens are stored on the backend by PRT. The uploaded Excel configuration is also saved on the persistent disk and auto-loads for every team member.</div>
       <div id="configMessage"></div>
     </div>
     <div>
@@ -131,7 +132,7 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
     </div>
     <div class="custom-dates" id="customDates"><input type="date" id="dFrom"><span class="muted">→</span><input type="date" id="dTo"></div>
     <button class="btn primary" id="runBtn" disabled>▶ Run Summary</button>
-    <div id="status">Upload an Excel configuration or use a saved manual row.</div>
+    <div id="status">Saved configuration will auto-load. Upload Excel only when replacing it, or use a saved manual row.</div>
   </div>
 </section>
 
@@ -191,7 +192,7 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
   <summary>Formulas, freshness & setup notes</summary>
   <p style="margin-top:8px"><b>Total traffic</b> = attributed installs + blocked installs. <b>Clean installs</b> = attributed installs − post-attribution installs. <b>Blocked %</b>, <b>PA %</b> and <b>Total fraud %</b> all use total traffic as denominator.<br>
   Raw <code>installs_report</code> is used first so PRT/Site ID/Campaign breakdown stays available. If raw access fails, returns 0 rows, or no configured PID/PRT row matches, aggregate <code>partners_by_date_report</code> is automatically used for PID/App-level install volume. Aggregate fallback does not provide Site ID/Campaign install detail. Raw requests use a 1,000,000-row cap and the dashboard marks the run incomplete if the cap is reached.<br>
-  Post-attribution data is updated later than real-time blocked data. Today/recent ranges are provisional and can change. Each enabled Apps Excel row is treated as a separate App + PID + optional PRT scope. Different PIDs are never merged in the default PID × App view. When Site ID or Campaign view is selected, the orange drill-down bar can filter by App, Media Source/PID, or both. KPIs, reasons and filtered CSV follow the same scope. API calls for the same app are fetched once internally only to save quota; calculations remain separate. Each app uses its configured Reporting Timezone. The timezone value must match that app's AppsFlyer App Settings. AppsFlyer tokens are selected server-side from the PRT ID and are never sent to the browser.</p>
+  Post-attribution data is updated later than real-time blocked data. Today/recent ranges are provisional and can change. Each enabled Apps Excel row is treated as a separate App + PID + optional PRT scope. Different PIDs are never merged in the default PID × App view. When Site ID or Campaign view is selected, the orange drill-down bar can filter by App, Media Source/PID, or both. KPIs, reasons and filtered CSV follow the same scope. API calls for the same app are fetched once internally only to save quota; calculations remain separate. Each app uses its configured Reporting Timezone. The timezone value must match that app's AppsFlyer App Settings. AppsFlyer tokens are selected server-side from the PRT ID and are never sent to the browser. The most recently uploaded Excel configuration is saved on the persistent disk and automatically loaded for all team members until it is replaced or removed.</p>
 </details>
 </div>
 
@@ -201,7 +202,7 @@ const $ = id => document.getElementById(id);
 const MAX_RAW_ROWS = 1000000;
 const state = {
   config:{accounts:[],apps:[],fetchApps:[],filename:"",errors:[]},
-  excelObjects:[],savedManual:[],backendPrts:new Set(),csrf:"",
+  excelObjects:[],savedManual:[],savedExcelMeta:{saved:false,filename:"",saved_at:""},backendPrts:new Set(),csrf:"",
   allPids:[],allPrts:[],pids:new Set(),prts:new Set(),
   range:"today",groupBy:"pid_app",rows:[],statuses:[],lastRun:null,
   drillApp:"",drillPid:"",sort:{key:"traffic",dir:"desc"}
@@ -242,10 +243,12 @@ async function importFile(file){
   if(!/\.xlsx$/i.test(file.name)){msg.innerHTML='<div class="notice err">Only .xlsx files are supported.</div>';return;}
   msg.innerHTML='<div class="notice"><span class="spinner"></span>Reading Excel configuration…</div>';
   try{
-    const res=await fetch("/config/import",{method:"POST",headers:{"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},body:file});
+    const res=await fetch("/config/import",{method:"POST",headers:{"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","X-CSRF-Token":state.csrf,"X-P360-Filename":encodeURIComponent(file.name)},body:file});
     const data=await res.json().catch(()=>({error:"Invalid server response"}));
     if(!res.ok) throw new Error(data.error||`Upload failed (${res.status})`);
-    loadConfig(data.sheets,file.name);
+    state.savedExcelMeta={saved:true,filename:data.filename||file.name,saved_at:data.saved_at||""};
+    loadConfig(data.sheets,`${state.savedExcelMeta.filename} · saved on server`);
+    msg.innerHTML=`<div class="notice ok"><b>${esc(state.savedExcelMeta.filename)}</b> is now saved on the backend and will auto-load for the whole team.</div>`;
   }catch(err){
     msg.innerHTML=`<div class="notice err">${esc(err.message)}</div>`;
   }finally{fileInput.value="";}
@@ -310,7 +313,7 @@ function renderConfig(){
   const c=state.config;
   $("sAccounts").textContent=state.backendPrts.size;
   $("sApps").textContent=c.apps.length;$("sPids").textContent=state.allPids.length;$("sPrts").textContent=state.allPrts.length;
-  $("clearConfig").disabled=!state.excelObjects.length;$("runBtn").disabled=!c.apps.length;$("filtersPanel").style.display=c.apps.length?"":"none";
+  $("clearConfig").disabled=!state.savedExcelMeta.saved;$("savedExcelDownload").style.display=state.savedExcelMeta.saved?"":"none";$("runBtn").disabled=!c.apps.length;$("filtersPanel").style.display=c.apps.length?"":"none";
   const list=$("configList");
   if(!c.apps.length){list.innerHTML='<div class="empty">No valid app rows are loaded.</div>';}
   else{
@@ -322,7 +325,16 @@ function renderConfig(){
   else msg.innerHTML=`<div class="notice err">No usable configuration is loaded.<br>${c.errors.map(esc).join("<br>")}</div>`;
   $("status").textContent=c.apps.length?`${c.apps.length} separate PID row(s) ready. Select a date and run the summary.`:"Upload Excel or save an app row manually.";
 }
-$("clearConfig").onclick=()=>{state.excelObjects=[];rebuildConfig("Saved manual configuration");};
+$("clearConfig").onclick=async()=>{
+  if(!state.savedExcelMeta.saved||!confirm("Remove the saved Excel configuration for the entire team? Manually saved rows will remain."))return;
+  const msg=$("configMessage");msg.innerHTML='<div class="notice"><span class="spinner"></span>Removing saved Excel configuration…</div>';
+  try{
+    const res=await fetch("/api/saved-excel-config",{method:"DELETE",headers:{"X-CSRF-Token":state.csrf}});
+    const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||"Could not remove the saved Excel configuration.");
+    state.excelObjects=[];state.savedExcelMeta={saved:false,filename:"",saved_at:""};rebuildConfig("Server-saved manual configuration");
+    msg.innerHTML='<div class="notice ok">Saved Excel configuration removed. Manually saved rows were kept.</div>';
+  }catch(err){msg.innerHTML=`<div class="notice err">${esc(err.message)}</div>`;}
+};
 
 /* ---------- chips ---------- */
 function renderChips(elId,values,set,type){
@@ -337,11 +349,15 @@ document.querySelectorAll(".chip-tools .tiny").forEach(b=>b.onclick=()=>{const v
 /* ---------- hosted backend + shared manual rows ---------- */
 async function bootstrapHosted(){
   try{
-    const [prtRes,appsRes]=await Promise.all([fetch("/api/prts"),fetch("/api/saved-apps")]);
-    if(!prtRes.ok||!appsRes.ok)throw new Error("Could not load backend configuration.");
-    const prtData=await prtRes.json(),appsData=await appsRes.json();
-    state.backendPrts=new Set(prtData.prts||[]);state.savedManual=appsData.apps||[];state.csrf=appsData.csrf||"";
-    renderPrtOptions();rebuildConfig("Server-saved configuration");
+    const [prtRes,appsRes,excelRes]=await Promise.all([fetch("/api/prts"),fetch("/api/saved-apps"),fetch("/api/saved-excel-config")]);
+    if(!prtRes.ok||!appsRes.ok||!excelRes.ok)throw new Error("Could not load backend configuration.");
+    const prtData=await prtRes.json(),appsData=await appsRes.json(),excelData=await excelRes.json();
+    state.backendPrts=new Set(prtData.prts||[]);state.savedManual=appsData.apps||[];state.csrf=appsData.csrf||excelData.csrf||"";
+    if(excelData.saved&&excelData.sheets){
+      state.savedExcelMeta={saved:true,filename:excelData.filename||"P360_Config.xlsx",saved_at:excelData.saved_at||""};
+      state.excelObjects=matrixObjects(sheetByName(excelData.sheets,"Apps")||sheetByName(excelData.sheets,"Config")||[]);
+    }else{state.savedExcelMeta={saved:false,filename:"",saved_at:""};state.excelObjects=[];}
+    renderPrtOptions();rebuildConfig(state.savedExcelMeta.saved?`${state.savedExcelMeta.filename} · auto-loaded from server`:"Server-saved manual configuration");
   }catch(err){$("manualMessage").innerHTML=`<div class="notice err">${esc(err.message)}</div>`;}
 }
 function renderPrtOptions(){$("prtOptions").innerHTML=[...state.backendPrts].sort().map(x=>`<option value="${esc(x)}"></option>`).join("");}
@@ -351,7 +367,7 @@ function renderManualList(){
   list.innerHTML='<div class="manual-row head"><div>App</div><div>App ID</div><div>PID</div><div>PRT</div><div>Timezone</div><div></div></div>'+state.savedManual.map(r=>`<div class="manual-row"><div><b>${esc(r.app_name)}</b></div><div>${esc(r.app_id)}</div><div>${esc(r.pid)}</div><div>${esc(r.prt)}<span class="sub ${state.backendPrts.has(r.prt)?"token-ok":"token-missing"}">${state.backendPrts.has(r.prt)?" token ready":" token missing"}</span></div><div>${esc(r.timezone)}</div><button class="btn ghost danger" type="button" data-delete-manual="${esc(r.id)}">Delete</button></div>`).join("");
   list.querySelectorAll("[data-delete-manual]").forEach(b=>b.onclick=()=>deleteManualRow(b.dataset.deleteManual));
 }
-async function refreshSavedApps(){const res=await fetch("/api/saved-apps");const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not refresh saved apps.");state.savedManual=data.apps||[];state.csrf=data.csrf||state.csrf;rebuildConfig(state.excelObjects.length?"Excel + saved configuration":"Server-saved configuration");}
+async function refreshSavedApps(){const res=await fetch("/api/saved-apps");const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not refresh saved apps.");state.savedManual=data.apps||[];state.csrf=data.csrf||state.csrf;rebuildConfig(state.savedExcelMeta.saved?`${state.savedExcelMeta.filename} · auto-loaded from server`:"Server-saved manual configuration");}
 $("manualForm").onsubmit=async e=>{
   e.preventDefault();const msg=$("manualMessage");msg.innerHTML='<div class="notice"><span class="spinner"></span>Saving app row…</div>';
   const payload={app_name:$("mAppName").value,app_id:$("mAppId").value,pid:$("mPid").value,prt:$("mPrt").value,timezone:$("mTimezone").value,notes:$("mNotes").value};
