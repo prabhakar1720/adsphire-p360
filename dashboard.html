@@ -38,7 +38,7 @@ label{display:block;font-size:11px;color:var(--dim);text-transform:uppercase;let
 .chip-wrap{margin-bottom:15px}.chips{display:flex;flex-wrap:wrap;gap:7px}.chip{border:1px solid var(--line);background:var(--bg);color:var(--dim);border-radius:999px;padding:6px 11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;cursor:pointer}.chip.on{color:var(--ink);border-color:var(--accent);background:rgba(255,176,32,.09)}.chip-tools{display:flex;gap:8px;margin-top:8px}.tiny{font-size:11px;color:var(--info);background:none;border:none;cursor:pointer;padding:0}.tiny:hover{text-decoration:underline}
 .runbar{display:flex;align-items:center;gap:11px;flex-wrap:wrap}.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;max-width:100%}.seg button{background:transparent;border:none;color:var(--dim);padding:9px 13px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.seg button.on{background:var(--panel2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
 .custom-dates{display:none;gap:7px;align-items:center}.custom-dates.show{display:flex}input[type=date],input[type=text],select{background:var(--bg);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 11px;font-size:12px}input:focus,select:focus{outline:none;border-color:var(--accent)}
-.drill-filters{display:none;margin:0 0 14px;padding:14px;background:linear-gradient(135deg,#FFF7EF,#FFF1E5);border:1px solid #F3BE91;border-left:4px solid var(--accent);border-radius:12px}.drill-filters.show{display:block}.drill-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:11px}.drill-title strong{font-size:13px;color:var(--ink)}.drill-title span{font-size:11px;color:var(--dim)}.drill-controls{display:flex;align-items:end;gap:10px;flex-wrap:wrap}.drill-field{min-width:230px;flex:0 1 280px}.drill-field label{margin-bottom:5px}.drill-field select{width:100%;background:var(--panel);border-color:#EAB88E}.drill-summary{font-size:11px;color:var(--dim);align-self:center;flex:1;min-width:240px;padding:8px 10px;background:rgba(255,255,255,.65);border:1px solid var(--line);border-radius:9px}.btn.compact{padding:9px 12px}.btn.download-filter{background:#2A1D12;border-color:#2A1D12;color:#fff}.btn.download-filter:hover{background:#4A2E19;border-color:#4A2E19}
+.drill-filters{display:block;margin:0 0 14px;padding:14px;background:linear-gradient(135deg,#FFF7EF,#FFF1E5);border:1px solid #F3BE91;border-left:4px solid var(--accent);border-radius:12px}.drill-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:11px}.drill-title strong{font-size:13px;color:var(--ink)}.drill-title span{font-size:11px;color:var(--dim)}.global-filter-grid{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:10px;align-items:end}.drill-field{min-width:0}.drill-field label{margin-bottom:5px}.drill-field select{width:100%;background:var(--panel);border-color:#EAB88E}.global-filter-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:11px}.drill-summary{font-size:11px;color:var(--dim);flex:1;min-width:260px;padding:8px 10px;background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:9px}.btn.compact{padding:9px 12px}.btn.download-filter{background:#2A1D12;border-color:#2A1D12;color:#fff}.btn.download-filter:hover{background:#4A2E19;border-color:#4A2E19}@media(max-width:1180px){.global-filter-grid{grid-template-columns:repeat(3,minmax(170px,1fr))}}@media(max-width:700px){.global-filter-grid{grid-template-columns:1fr 1fr}}@media(max-width:480px){.global-filter-grid{grid-template-columns:1fr}}
 #status{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--dim);flex:1;min-width:260px;line-height:1.5}.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}
 .kpis{display:grid;grid-template-columns:repeat(5,minmax(155px,1fr));gap:13px;margin-bottom:16px}@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){.kpis{grid-template-columns:1fr}}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:15px 17px;position:relative;overflow:hidden;box-shadow:var(--shadow)}.kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kc,var(--faint))}.k-label{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);font-weight:800}.k-val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:25px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}.k-sub{font-size:11px;color:var(--faint);margin-top:3px;line-height:1.35}
@@ -63,7 +63,7 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
 <div class="wrap">
 <header>
   <div class="brand">
-    <h1>Adsphire <span>·</span> P360 Fraud Rate Checker <span class="version">Hosted Team Edition · Saved Excel</span></h1>
+    <h1>Adsphire <span>·</span> P360 Fraud Rate Checker <span class="version">Hosted Team Edition · Global Filters</span></h1>
     <p>AppsFlyer Pull API · server-side tokens · persistent Excel and saved app configuration</p>
   </div>
   <div class="actions">
@@ -147,22 +147,28 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
 </div>
 
 <section class="panel" id="tablePanel" style="display:none">
-  <div class="drill-filters" id="drillFilters">
+  <div class="drill-filters" id="globalFilters">
     <div class="drill-title">
-      <strong id="drillHeading">Site ID Drill-down</strong>
-      <span>Select an App, a Media Source, or both. KPIs and fraud reasons follow this scope.</span>
+      <strong>Global Report Filters</strong>
+      <span>These filters apply to every view, KPI, fraud reason and CSV export.</span>
     </div>
-    <div class="drill-controls">
-      <div class="drill-field"><label for="appSelect">App</label><select id="appSelect"><option value="">All apps</option></select></div>
-      <div class="drill-field"><label for="pidSelect">Media Source / PID</label><select id="pidSelect"><option value="">All media sources</option></select></div>
-      <button class="btn ghost compact" id="clearDrill" type="button">Reset filters</button>
+    <div class="global-filter-grid">
+      <div class="drill-field"><label for="filterPid">Media Source / PID</label><select id="filterPid"><option value="">All PIDs</option></select></div>
+      <div class="drill-field"><label for="filterPrt">PRT</label><select id="filterPrt"><option value="">All PRTs</option></select></div>
+      <div class="drill-field"><label for="filterAccount">Account</label><select id="filterAccount"><option value="">All accounts</option></select></div>
+      <div class="drill-field"><label for="filterApp">App</label><select id="filterApp"><option value="">All apps</option></select></div>
+      <div class="drill-field"><label for="filterAppId">App ID</label><select id="filterAppId"><option value="">All App IDs</option></select></div>
+      <div class="drill-field"><label for="filterDate">Day</label><select id="filterDate"><option value="">All days</option></select></div>
+    </div>
+    <div class="global-filter-actions">
+      <button class="btn ghost compact" id="clearGlobalFilters" type="button">Reset all filters</button>
       <button class="btn download-filter compact" id="dlContextBtn" type="button" disabled>↓ Download filtered CSV</button>
-      <div class="drill-summary" id="drillSummary">Select Site ID or Campaign view to use drill-down filters.</div>
+      <div class="drill-summary" id="globalFilterSummary">Run a report to populate the filters.</div>
     </div>
   </div>
   <div class="tbl-head">
     <div class="seg" id="groupSeg">
-      <button data-g="pid">PID</button><button data-g="prt">PRT</button><button data-g="acct">Account</button><button data-g="app">App</button><button data-g="pid_app" class="on">PID × App</button><button data-g="site">Site ID</button><button data-g="campaign">Campaign</button><button data-g="date">Day</button>
+      <button data-g="pid">PID</button><button data-g="prt">PRT</button><button data-g="acct">Account</button><button data-g="app">App</button><button data-g="app_id">App ID</button><button data-g="pid_app" class="on">PID × App</button><button data-g="site">Site ID</button><button data-g="campaign">Campaign</button><button data-g="date">Day</button>
     </div>
     <div class="legend"><span><b style="background:var(--clean)"></b>Clean</span><span><b style="background:var(--blocked)"></b>Blocked</span><span><b style="background:var(--pa)"></b>PA</span></div>
     <input type="text" id="search" placeholder="Search source…" style="max-width:210px">
@@ -192,7 +198,7 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
   <summary>Formulas, freshness & setup notes</summary>
   <p style="margin-top:8px"><b>Total traffic</b> = attributed installs + blocked installs. <b>Clean installs</b> = attributed installs − post-attribution installs. <b>Blocked %</b>, <b>PA %</b> and <b>Total fraud %</b> all use total traffic as denominator.<br>
   Raw <code>installs_report</code> is used first so PRT/Site ID/Campaign breakdown stays available. If raw access fails, returns 0 rows, or no configured PID/PRT row matches, aggregate <code>partners_by_date_report</code> is automatically used for PID/App-level install volume. Aggregate fallback does not provide Site ID/Campaign install detail. Raw requests use a 1,000,000-row cap and the dashboard marks the run incomplete if the cap is reached.<br>
-  Post-attribution data is updated later than real-time blocked data. Today/recent ranges are provisional and can change. Each enabled Apps Excel row is treated as a separate App + PID + optional PRT scope. Different PIDs are never merged in the default PID × App view. When Site ID or Campaign view is selected, the orange drill-down bar can filter by App, Media Source/PID, or both. KPIs, reasons and filtered CSV follow the same scope. API calls for the same app are fetched once internally only to save quota; calculations remain separate. Each app uses its configured Reporting Timezone. The timezone value must match that app's AppsFlyer App Settings. AppsFlyer tokens are selected server-side from the PRT ID and are never sent to the browser. The most recently uploaded Excel configuration is saved on the persistent disk and automatically loaded for all team members until it is replaced or removed.</p>
+  Post-attribution data is updated later than real-time blocked data. Today/recent ranges are provisional and can change. Each enabled Apps Excel row is treated as a separate App + PID + optional PRT scope. Different PIDs are never merged in the default PID × App view. The orange Global Report Filters bar can filter every view by PID, PRT, Account, App, App ID and Day. KPIs, fraud reasons and filtered CSV exports follow the same scope. API calls for the same app are fetched once internally only to save quota; calculations remain separate. Each app uses its configured Reporting Timezone. The timezone value must match that app's AppsFlyer App Settings. AppsFlyer tokens are selected server-side from the PRT ID and are never sent to the browser. The most recently uploaded Excel configuration is saved on the persistent disk and automatically loaded for all team members until it is replaced or removed.</p>
 </details>
 </div>
 
@@ -205,7 +211,7 @@ const state = {
   excelObjects:[],savedManual:[],savedExcelMeta:{saved:false,filename:"",saved_at:""},backendPrts:new Set(),csrf:"",
   allPids:[],allPrts:[],pids:new Set(),prts:new Set(),
   range:"today",groupBy:"pid_app",rows:[],statuses:[],lastRun:null,
-  drillApp:"",drillPid:"",sort:{key:"traffic",dir:"desc"}
+  filters:{pid:"",prt:"",account:"",app:"",appId:"",date:""},sort:{key:"traffic",dir:"desc"}
 };
 const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm = s => String(s??"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
@@ -306,8 +312,8 @@ function rebuildConfig(filename="",extraErrors=[]){
   state.allPids=[...new Set(apps.map(a=>a.pid))].sort();
   state.allPrts=[...new Set(apps.map(a=>a.prt).filter(Boolean))].sort();
   state.pids=new Set(state.allPids);state.prts=new Set(state.allPrts);
-  state.drillApp="";state.drillPid="";state.rows=[];state.statuses=[];state.lastRun=null;
-  resetResults();renderConfig();renderFilterChips();renderDrillFilters();renderManualList();
+  state.filters={pid:"",prt:"",account:"",app:"",appId:"",date:""};state.rows=[];state.statuses=[];state.lastRun=null;
+  resetResults();renderConfig();renderFilterChips();renderGlobalFilters();renderManualList();
 }
 function renderConfig(){
   const c=state.config;
@@ -564,63 +570,88 @@ async function runAll(){
   finally{$("runBtn").disabled=false;}
 }
 function hardIssues(){return state.statuses.filter(s=>s.status==="failed"||s.status==="truncated");}
-function resetResults(){state.rows=[];state.statuses=[];state.lastRun=null;state.drillApp="";state.drillPid="";["kpis","tablePanel","reasonsPanel","statusPanel"].forEach(id=>$(id).style.display="none");$("alerts").classList.remove("show");$("dlBtn").disabled=true;$("dlReasonsBtn").disabled=true;}
+function resetResults(){state.rows=[];state.statuses=[];state.lastRun=null;state.filters={pid:"",prt:"",account:"",app:"",appId:"",date:""};["kpis","tablePanel","reasonsPanel","statusPanel"].forEach(id=>$(id).style.display="none");$("alerts").classList.remove("show");$("dlBtn").disabled=true;$("dlReasonsBtn").disabled=true;}
 
-/* ---------- filters / grouping ---------- */
-function drillActive(){return state.groupBy==="site"||state.groupBy==="campaign";}
-function filteredRows(){
+/* ---------- global filters / grouping ---------- */
+function effectivePrt(r){return r.configPrt||r.prt||"";}
+function baseFilteredRows(){
   if(state.allPids.length && !state.pids.size)return [];
   if(state.allPrts.length && !state.prts.size)return [];
-  const useDrill=drillActive();
   return state.rows.filter(r=>{
     const pidOk=!state.allPids.length||state.pids.has(r.pid);
-    const effectivePrt=r.configPrt||r.prt;
-    const prtOk=!state.allPrts.length||!effectivePrt||state.prts.has(effectivePrt);
-    const appOk=!useDrill||!state.drillApp||r.appId===state.drillApp;
-    const drillPidOk=!useDrill||!state.drillPid||r.pid===state.drillPid;
-    return pidOk&&prtOk&&appOk&&drillPidOk;
+    const prt=effectivePrt(r);
+    const prtOk=!state.allPrts.length||!prt||state.prts.has(prt);
+    return pidOk&&prtOk;
   });
 }
-function renderDrillFilters(){
-  const bar=$("drillFilters"),appSel=$("appSelect"),pidSel=$("pidSelect");
-  const active=drillActive();
-  bar.classList.toggle("show",active);
-  $("drillHeading").textContent=state.groupBy==="campaign"?"Campaign Drill-down":"Site ID Drill-down";
-  $("search").placeholder=state.groupBy==="site"?"Search Site ID…":state.groupBy==="campaign"?"Search campaign…":"Search source…";
-
-  const configured=state.config.apps||[];
-  const appCandidates=state.drillPid?configured.filter(a=>a.pid===state.drillPid):configured;
-  const apps=[...new Map(appCandidates.map(a=>[a.appId,{id:a.appId,name:a.appName}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
-  if(state.drillApp&&!apps.some(a=>a.id===state.drillApp))state.drillApp="";
-  appSel.innerHTML='<option value="">All apps</option>'+apps.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.id)}</option>`).join("");
-  appSel.value=state.drillApp;
-
-  const pidCandidates=state.drillApp?configured.filter(a=>a.appId===state.drillApp):configured;
-  const pids=[...new Set(pidCandidates.map(a=>a.pid).filter(Boolean))].sort();
-  if(state.drillPid&&!pids.includes(state.drillPid))state.drillPid="";
-  pidSel.innerHTML='<option value="">All media sources</option>'+pids.map(pid=>`<option value="${esc(pid)}">${esc(pid)}</option>`).join("");
-  pidSel.value=state.drillPid;
-
-  $("dlContextBtn").disabled=!state.lastRun||!active;
-  updateDrillSummary();
+function rowMatchesGlobal(r,exclude=""){
+  const f=state.filters,prt=effectivePrt(r);
+  if(exclude!=="pid"&&f.pid&&r.pid!==f.pid)return false;
+  if(exclude!=="prt"&&f.prt&&prt!==f.prt)return false;
+  if(exclude!=="account"&&f.account&&(r.acct||"")!==f.account)return false;
+  if(exclude!=="app"&&f.app&&r.appName!==f.app)return false;
+  if(exclude!=="appId"&&f.appId&&r.appId!==f.appId)return false;
+  if(exclude!=="date"&&f.date&&r.date!==f.date)return false;
+  return true;
 }
-function selectedAppLabel(){
-  if(!state.drillApp)return "All apps";
-  const a=state.config.apps.find(x=>x.appId===state.drillApp);
-  return a?`${a.appName} · ${a.appId}`:state.drillApp;
+function filteredRows(){return baseFilteredRows().filter(r=>rowMatchesGlobal(r));}
+function filterValue(r,key){
+  if(key==="pid")return r.pid||"";
+  if(key==="prt")return effectivePrt(r);
+  if(key==="account")return r.acct||"";
+  if(key==="app")return r.appName||"";
+  if(key==="appId")return r.appId||"";
+  if(key==="date")return r.date||"";
+  return "";
 }
-function updateDrillSummary(groupCount){
-  const el=$("drillSummary");if(!el)return;
-  if(!drillActive()){el.textContent="Select Site ID or Campaign view to use drill-down filters.";return;}
-  const noun=state.groupBy==="site"?"Site IDs":"Campaigns";
+const FILTER_DEFS={
+  pid:{id:"filterPid",all:"All PIDs"},
+  prt:{id:"filterPrt",all:"All PRTs"},
+  account:{id:"filterAccount",all:"All accounts"},
+  app:{id:"filterApp",all:"All apps"},
+  appId:{id:"filterAppId",all:"All App IDs"},
+  date:{id:"filterDate",all:"All days"}
+};
+function optionLabel(key,value){
+  if(key==="appId"){
+    const row=state.rows.find(r=>r.appId===value);return row?`${row.appName} · ${value}`:value;
+  }
+  return value;
+}
+function renderGlobalFilters(){
+  $("search").placeholder=state.groupBy==="site"?"Search Site ID…":state.groupBy==="campaign"?"Search campaign…":state.groupBy==="date"?"Search day…":"Search source…";
+  const base=baseFilteredRows();
+  for(const [key,def] of Object.entries(FILTER_DEFS)){
+    const sel=$(def.id);if(!sel)continue;
+    const candidates=base.filter(r=>rowMatchesGlobal(r,key));
+    const values=[...new Set(candidates.map(r=>filterValue(r,key)).filter(Boolean))].sort((a,b)=>key==="date"?a.localeCompare(b):a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"}));
+    if(state.filters[key]&&!values.includes(state.filters[key]))state.filters[key]="";
+    sel.innerHTML=`<option value="">${esc(def.all)}</option>`+values.map(v=>`<option value="${esc(v)}">${esc(optionLabel(key,v))}</option>`).join("");
+    sel.value=state.filters[key];
+  }
+  $("dlContextBtn").disabled=!state.lastRun;
+  updateGlobalFilterSummary();
+}
+function groupNoun(){return {pid:"PIDs",prt:"PRTs",acct:"Accounts",app:"Apps",app_id:"App IDs",pid_app:"PID × App rows",site:"Site IDs",campaign:"Campaigns",date:"Days"}[state.groupBy]||"rows";}
+function updateGlobalFilterSummary(groupCount){
+  const el=$("globalFilterSummary");if(!el)return;
+  if(!state.lastRun){el.textContent="Run a report to populate the filters.";return;}
   const count=groupCount===undefined?aggregate().length:groupCount;
-  el.innerHTML=`Showing <b>${Number(count).toLocaleString()}</b> ${noun} · App: <b>${esc(selectedAppLabel())}</b> · Media Source: <b>${esc(state.drillPid||"All PIDs")}</b>`;
+  const selected=[];
+  if(state.filters.pid)selected.push(`PID: ${state.filters.pid}`);
+  if(state.filters.prt)selected.push(`PRT: ${state.filters.prt}`);
+  if(state.filters.account)selected.push(`Account: ${state.filters.account}`);
+  if(state.filters.app)selected.push(`App: ${state.filters.app}`);
+  if(state.filters.appId)selected.push(`App ID: ${state.filters.appId}`);
+  if(state.filters.date)selected.push(`Day: ${state.filters.date}`);
+  el.innerHTML=`Showing <b>${Number(count).toLocaleString()}</b> ${esc(groupNoun())}${selected.length?` · ${selected.map(x=>`<b>${esc(x)}</b>`).join(" · ")}`:" · All data"}`;
 }
-$("appSelect").onchange=()=>{state.drillApp=$("appSelect").value;renderDrillFilters();if(state.lastRun)render();};
-$("pidSelect").onchange=()=>{state.drillPid=$("pidSelect").value;renderDrillFilters();if(state.lastRun)render();};
-$("clearDrill").onclick=()=>{state.drillApp="";state.drillPid="";renderDrillFilters();if(state.lastRun)render();};
+for(const [key,def] of Object.entries(FILTER_DEFS)){
+  const el=$(def.id);if(el)el.onchange=()=>{state.filters[key]=el.value;renderGlobalFilters();if(state.lastRun)render();};
+}
+$("clearGlobalFilters").onclick=()=>{state.filters={pid:"",prt:"",account:"",app:"",appId:"",date:""};renderGlobalFilters();if(state.lastRun)render();};
 $("dlContextBtn").onclick=()=>$("dlBtn").click();
-function groupKey(r){switch(state.groupBy){case"pid":return r.pid;case"prt":return r.prt||"(no PRT in report)";case"acct":return r.acct;case"app":return `${r.appName} · ${r.appId}`;case"pid_app":return `${r.pid} · ${r.appName}${r.configPrt?` · ${r.configPrt}`:""}`;case"site":return r.site||"(no site ID)";case"campaign":return r.campaign||"(no campaign)";case"date":return r.date;}}
+function groupKey(r){switch(state.groupBy){case"pid":return r.pid;case"prt":return r.prt||"(no PRT in report)";case"acct":return r.acct;case"app":return r.appName;case"app_id":return r.appId;case"pid_app":return `${r.pid} · ${r.appName}${r.configPrt?` · ${r.configPrt}`:""}`;case"site":return r.site||"(no site ID)";case"campaign":return r.campaign||"(no campaign)";case"date":return r.date;}}
 function aggregate(){
   const map=new Map();for(const r of filteredRows()){const k=groupKey(r);if(!map.has(k))map.set(k,{key:k,installs:0,blocked:0,pa:0,apps:new Set(),prts:new Set(),pids:new Set()});const g=map.get(k);g[r.type] += r.n;g.apps.add(r.appName);if(r.prt)g.prts.add(r.prt);if(r.pid)g.pids.add(r.pid);}
   return [...map.values()].map(g=>{g.traffic=g.installs+g.blocked;g.clean=Math.max(0,g.installs-g.pa);g.blockedPct=pct(g.blocked,g.traffic);g.paPct=pct(g.pa,g.traffic);g.fraudPct=pct(g.blocked+g.pa,g.traffic);return g;});
@@ -628,15 +659,15 @@ function aggregate(){
 const pct=(n,d)=>d>0?n/d*100:null;const fmtPct=v=>v===null?"—":v.toFixed(2)+"%";const pctClass=v=>v===null?"na":v>=25?"pct-hi":v>=10?"pct-mid":"pct-lo";
 function sortedGroups(groups){const {key,dir}=state.sort;const m=dir==="asc"?1:-1;return groups.sort((a,b)=>{const av=a[key],bv=b[key];if(typeof av==="string")return av.localeCompare(bv)*m;return ((av??-Infinity)-(bv??-Infinity))*m;});}
 function render(){
-  renderDrillFilters();
-  const groups=aggregate();const q=$("search").value.trim().toLowerCase();const shown=sortedGroups(q?groups.filter(g=>g.key.toLowerCase().includes(q)):groups);updateDrillSummary(groups.length);
+  renderGlobalFilters();
+  const groups=aggregate();const q=$("search").value.trim().toLowerCase();const shown=sortedGroups(q?groups.filter(g=>g.key.toLowerCase().includes(q)):groups);updateGlobalFilterSummary(groups.length);
   const T=groups.reduce((a,g)=>({installs:a.installs+g.installs,blocked:a.blocked+g.blocked,pa:a.pa+g.pa}),{installs:0,blocked:0,pa:0});const traffic=T.installs+T.blocked;const clean=Math.max(0,T.installs-T.pa);
   $("kTraffic").textContent=traffic.toLocaleString();$("kClean").textContent=clean.toLocaleString();$("kBlocked").textContent=T.blocked.toLocaleString();$("kPA").textContent=T.pa.toLocaleString();$("kBlockedPct").textContent=fmtPct(pct(T.blocked,traffic))+" of total traffic";$("kPAPct").textContent=fmtPct(pct(T.pa,traffic))+" of total traffic";$("kFraud").textContent=fmtPct(pct(T.blocked+T.pa,traffic));$("kpis").style.display="";$("tablePanel").style.display="";
   const tb=$("tbody");tb.innerHTML="";$("emptyMsg").style.display=shown.length?"none":"";
   for(const g of shown){const cW=g.traffic?g.clean/g.traffic*100:0,bW=g.traffic?g.blocked/g.traffic*100:0,pW=g.traffic?g.pa/g.traffic*100:0;let sub="";if(state.groupBy==="pid")sub=[...g.prts].join(", ");else if(["prt","acct"].includes(state.groupBy))sub=[...g.apps].join(", ");else if(["site","campaign"].includes(state.groupBy))sub=[...g.pids].join(", ");const tr=document.createElement("tr");tr.innerHTML=`<td class="src">${esc(g.key)}${sub?`<span class="sub">${esc(sub)}</span>`:""}<div class="comp"><i class="c" style="width:${cW}%"></i><i class="b" style="width:${bW}%"></i><i class="p" style="width:${pW}%"></i></div></td><td>${g.traffic.toLocaleString()}</td><td>${g.installs.toLocaleString()}</td><td class="num-c">${g.clean.toLocaleString()}</td><td class="num-b">${g.blocked.toLocaleString()}</td><td class="num-p">${g.pa.toLocaleString()}</td><td class="${pctClass(g.blockedPct)}">${fmtPct(g.blockedPct)}</td><td class="${pctClass(g.paPct)}">${fmtPct(g.paPct)}</td><td class="${pctClass(g.fraudPct)}">${fmtPct(g.fraudPct)}</td>`;tb.appendChild(tr);}
   renderReasons();renderAlerts();const complete=!hardIssues().length;$("dlBtn").disabled=false;$("dlReasonsBtn").disabled=!complete;
 }
-$("groupSeg").onclick=e=>{const b=e.target.closest("button");if(!b)return;document.querySelectorAll("#groupSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");state.groupBy=b.dataset.g;renderDrillFilters();if(state.lastRun)render();};
+$("groupSeg").onclick=e=>{const b=e.target.closest("button");if(!b)return;document.querySelectorAll("#groupSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");state.groupBy=b.dataset.g;renderGlobalFilters();if(state.lastRun)render();};
 $("search").oninput=()=>{if(state.lastRun)render();};
 document.querySelectorAll("#tablePanel th[data-sort]").forEach(th=>th.onclick=()=>{const key=th.dataset.sort;if(state.sort.key===key)state.sort.dir=state.sort.dir==="asc"?"desc":"asc";else state.sort={key,dir:key==="key"?"asc":"desc"};render();});
 
@@ -676,9 +707,9 @@ $("dlBtn").onclick=()=>{
     const siteId=state.groupBy==="site"?g.source:"";const campaign=state.groupBy==="campaign"?g.source:"";
     lines.push([g.date,state.groupBy,csvCell(g.app),csvCell(g.appId),csvCell(g.pid),csvCell(g.prt),csvCell(siteId),csvCell(campaign),csvCell(g.source),t,g.installs,Math.max(0,g.installs-g.pa),g.blocked,g.pa,fmtPct(pct(g.blocked,t)),fmtPct(pct(g.pa,t)),fmtPct(pct(g.blocked+g.pa,t)),completeness].join(","));
   }
-  const appTag=state.drillApp?`_${state.drillApp.replace(/[^a-z0-9]+/gi,"_")}`:"_all_apps";
-  const pidTag=state.drillPid?`_${state.drillPid.replace(/[^a-z0-9]+/gi,"_")}`:"_all_pids";
-  saveCSV(lines,`adsphire_p360_${state.groupBy}${appTag}${pidTag}_${state.lastRun.from}_${state.lastRun.to}.csv`);
+  const tagParts=Object.entries(state.filters).filter(([,v])=>v).map(([k,v])=>`${k}-${String(v).replace(/[^a-z0-9]+/gi,"_")}`);
+  const filterTag=tagParts.length?`_${tagParts.join("_")}`:"_all_data";
+  saveCSV(lines,`adsphire_p360_${state.groupBy}${filterTag}_${state.lastRun.from}_${state.lastRun.to}.csv`);
 };
 $("dlReasonsBtn").onclick=()=>{if(!state.lastRun||hardIssues().length)return;const map=new Map();for(const r of filteredRows()){if(r.type==="installs")continue;const k=[r.date,groupKey(r),r.appName,r.type,r.reason||"(not reported)",r.sub||""].join("\u0001");map.set(k,(map.get(k)||0)+r.n);}const lines=[["date","grouping","source","app","type","reason","sub_reason","count"].join(",")];for(const [k,count] of [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0])||b[1]-a[1])){const [date,source,app,type,reason,sub]=k.split("\u0001");lines.push([date,state.groupBy,csvCell(source),csvCell(app),type==="blocked"?"blocked":"post_attribution",csvCell(reason),csvCell(sub),count].join(","));}saveCSV(lines,`adsphire_p360_reasons_${state.groupBy}_${state.lastRun.from}_${state.lastRun.to}.csv`);};
 </script>
