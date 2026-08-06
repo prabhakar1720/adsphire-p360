@@ -92,3 +92,7 @@ Use **Add an App Row Manually**. These rows are saved on the server and shared w
 ## Important
 
 The persistent disk is required. Without it, saved PRT tokens and manually added app rows can disappear after a restart or redeploy.
+
+## Saved Excel behavior
+
+After the first Excel upload, the workbook is stored on the persistent disk and automatically loaded for all users. Use **Upload or Replace Excel Configuration** only when updating the app list. **Remove Saved Excel** deletes only the shared workbook configuration; PRT tokens and manually saved rows remain.
