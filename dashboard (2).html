@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adsphire · P360 Team Dashboard</title>
+<style>
+:root{
+  --bg:#FFF8F2;--panel:#FFFFFF;--panel2:#FFF1E5;--line:#F0D2B8;
+  --ink:#2A1D12;--dim:#765A45;--faint:#A77A57;--clean:#10A978;
+  --blocked:#E65353;--pa:#8B5CF6;--accent:#F58220;--info:#3B82F6;
+  --warn:#E9A008;--radius:14px;--shadow:0 10px 28px rgba(245,130,32,.10)
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input{font:inherit}
+button{color:inherit}
+.wrap{max-width:1440px;margin:0 auto;padding:26px 24px 80px}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:20px}
+.brand h1{font-size:23px;letter-spacing:.1px}.brand h1 span{color:var(--accent)}
+.brand p{color:var(--dim);font-size:13px;margin-top:4px}.version{font-size:11px;color:var(--faint);border:1px solid var(--line);padding:4px 8px;border-radius:999px;margin-left:7px;vertical-align:2px}
+.actions{display:flex;gap:9px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:9px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--faint);transform:translateY(-1px)}.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.btn:disabled{opacity:.42;cursor:not-allowed;transform:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1D1404}.btn.primary:hover{background:#FFC451}.btn.ghost{background:transparent}.btn.danger{color:var(--blocked)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.panel-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.panel h2{font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+.grid2{display:grid;grid-template-columns:minmax(320px,1.05fr) minmax(320px,.95fr);gap:18px}@media(max-width:920px){.grid2{grid-template-columns:1fr}}
+.drop{border:1.5px dashed #E5B28A;background:var(--bg);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:.15s}.drop:hover,.drop.drag{border-color:var(--accent);background:rgba(245,130,32,.08)}
+.drop strong{display:block;font-size:15px}.drop p{font-size:12px;color:var(--dim);margin-top:6px;line-height:1.55}.drop input{display:none}
+.config-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:12px}@media(max-width:600px){.config-stats{grid-template-columns:repeat(2,1fr)}}
+.mini{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px}.mini b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.mini span{display:block;color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+.notice{border:1px solid var(--line);background:var(--bg);border-left:3px solid var(--info);border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--dim);line-height:1.55;margin-top:12px}.notice.warn{border-left-color:var(--warn)}.notice.err{border-left-color:var(--blocked);color:#A33F34}.notice.ok{border-left-color:var(--clean)}
+.config-list{max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.config-row{display:grid;grid-template-columns:minmax(130px,1.1fr) minmax(160px,1.3fr) minmax(120px,.9fr);gap:10px;padding:10px 12px;border-bottom:1px solid rgba(41,53,68,.7);font-size:12px}.config-row:last-child{border-bottom:none}.config-row.header{position:sticky;top:0;background:var(--panel2);color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:800}.config-row .sub{display:block;color:var(--faint);font-size:10.5px;margin-top:2px}.token-mask{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--clean)}
+label{display:block;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:7px}
+.chip-wrap{margin-bottom:15px}.chips{display:flex;flex-wrap:wrap;gap:7px}.chip{border:1px solid var(--line);background:var(--bg);color:var(--dim);border-radius:999px;padding:6px 11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;cursor:pointer}.chip.on{color:var(--ink);border-color:var(--accent);background:rgba(255,176,32,.09)}.chip-tools{display:flex;gap:8px;margin-top:8px}.tiny{font-size:11px;color:var(--info);background:none;border:none;cursor:pointer;padding:0}.tiny:hover{text-decoration:underline}
+.runbar{display:flex;align-items:flex-end;gap:11px;flex-wrap:wrap}.run-scope{min-width:280px;max-width:420px;flex:1}.run-scope label{margin-bottom:5px}.run-scope select{width:100%;background:var(--panel);border-color:#EAB88E}.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;max-width:100%}.seg button{background:transparent;border:none;color:var(--dim);padding:9px 13px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.seg button.on{background:var(--panel2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+.custom-dates{display:none;gap:7px;align-items:center}.custom-dates.show{display:flex}input[type=date],input[type=text],select{background:var(--bg);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 11px;font-size:12px}input:focus,select:focus{outline:none;border-color:var(--accent)}
+.drill-filters{display:block;margin:0 0 14px;padding:14px;background:linear-gradient(135deg,#FFF7EF,#FFF1E5);border:1px solid #F3BE91;border-left:4px solid var(--accent);border-radius:12px}.drill-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:11px}.drill-title strong{font-size:13px;color:var(--ink)}.drill-title span{font-size:11px;color:var(--dim)}.global-filter-grid{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:10px;align-items:end}.drill-field{min-width:0}.drill-field label{margin-bottom:5px}.drill-field select{width:100%;background:var(--panel);border-color:#EAB88E}.global-filter-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:11px}.drill-summary{font-size:11px;color:var(--dim);flex:1;min-width:260px;padding:8px 10px;background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:9px}.btn.compact{padding:9px 12px}.btn.download-filter{background:#2A1D12;border-color:#2A1D12;color:#fff}.btn.download-filter:hover{background:#4A2E19;border-color:#4A2E19}@media(max-width:1180px){.global-filter-grid{grid-template-columns:repeat(3,minmax(170px,1fr))}}@media(max-width:700px){.global-filter-grid{grid-template-columns:1fr 1fr}}@media(max-width:480px){.global-filter-grid{grid-template-columns:1fr}}
+#status{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--dim);flex:1;min-width:260px;line-height:1.5}.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(155px,1fr));gap:13px;margin-bottom:16px}@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){.kpis{grid-template-columns:1fr}}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:15px 17px;position:relative;overflow:hidden;box-shadow:var(--shadow)}.kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kc,var(--faint))}.k-label{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);font-weight:800}.k-val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:25px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}.k-sub{font-size:11px;color:var(--faint);margin-top:3px;line-height:1.35}
+.alerts{display:none;margin-bottom:16px}.alerts.show{display:block}.alert-head{font-weight:800;color:var(--warn);font-size:13px;margin-bottom:5px}.alert-body{font-size:12px;color:var(--dim);line-height:1.55}
+.tbl-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}.legend{display:flex;gap:14px;font-size:11px;color:var(--dim)}.legend b{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
+.table-scroll{overflow:auto;max-height:620px}table{width:100%;border-collapse:collapse;font-size:12.5px}thead{position:sticky;top:0;background:var(--panel);z-index:2}th{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);text-align:right;padding:9px 9px;border-bottom:1px solid var(--line);font-weight:800;white-space:nowrap;cursor:pointer}th:first-child,td:first-child{text-align:left}th:hover{color:var(--ink)}td{padding:10px 9px;border-bottom:1px solid rgba(41,53,68,.58);text-align:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}tr:hover td{background:rgba(245,130,32,.07)}td.src{font-family:Inter,ui-sans-serif,system-ui;font-weight:750;font-size:13px;min-width:230px;white-space:normal}.src .sub{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--faint);font-size:10.5px;font-weight:400;margin-top:2px}.num-b{color:var(--blocked)}.num-p{color:var(--pa)}.num-c{color:var(--clean)}.pct-hi{color:var(--blocked);font-weight:800}.pct-mid{color:var(--accent);font-weight:700}.pct-lo{color:var(--clean)}.na{color:var(--faint)}
+.comp{height:7px;border-radius:99px;background:var(--panel2);overflow:hidden;display:flex;min-width:145px;margin-top:7px}.comp i{display:block;height:100%}.comp .c{background:var(--clean)}.comp .b{background:var(--blocked)}.comp .p{background:var(--pa)}
+.empty{padding:42px 20px;text-align:center;color:var(--faint);font-size:13px;line-height:1.6}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.status-card{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px}.status-card h3{font-size:12px;margin-bottom:7px}.status-line{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--dim);padding:3px 0}.badge{font-size:9px;text-transform:uppercase;letter-spacing:.08em;border-radius:999px;padding:3px 7px;border:1px solid var(--line)}.badge.ok{color:var(--clean)}.badge.fail{color:var(--blocked)}.badge.warn{color:var(--warn)}
+details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}details summary{cursor:pointer;color:var(--faint)}code{background:var(--panel2);padding:1px 5px;border-radius:5px}.muted{color:var(--faint)}
+
+.manual-grid{display:grid;grid-template-columns:1.05fr 1.25fr 1fr 1fr 1fr 1.2fr auto;gap:9px;align-items:end}
+@media(max-width:1100px){.manual-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.manual-grid .manual-submit{grid-column:1/-1}}
+@media(max-width:560px){.manual-grid{grid-template-columns:1fr}}
+.manual-grid input,.manual-grid select{width:100%}.manual-manage{display:flex;align-items:center;justify-content:flex-end;gap:9px;margin-top:12px}.manual-list{display:none;margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden}.manual-list.show{display:block}.manual-row{display:grid;grid-template-columns:1.1fr 1.25fr 1fr 1fr 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);font-size:12px}.manual-row:last-child{border-bottom:none}.manual-row.head{background:var(--panel2);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:800}@media(max-width:850px){.manual-row{grid-template-columns:1fr 1fr}.manual-row.head{display:none}}
+.token-ok{color:var(--clean);font-weight:800}.token-missing{color:var(--blocked);font-weight:800}
+
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand">
+    <h1>Adsphire <span>·</span> P360 Fraud Rate Checker <span class="version">Hosted Team Edition · Global Filters</span></h1>
+    <p>AppsFlyer Pull API · server-side tokens · persistent Excel and saved app configuration</p>
+  </div>
+  <div class="actions">
+    <a class="btn ghost" href="/P360_Config_Template.xlsx">↓ Excel Template</a>
+    <a class="btn ghost" id="savedExcelDownload" href="/api/saved-excel-config/download" style="display:none">↓ Saved Excel</a>
+    <a class="btn ghost" href="/admin">⚙ Admin</a>
+    <button class="btn" id="dlBtn" disabled>↓ Current View CSV</button>
+    <button class="btn" id="dlReasonsBtn" disabled>↓ Reasons CSV</button>
+    <a class="btn ghost" href="/logout">Logout</a>
+  </div>
+</header>
+
+<section class="panel" id="configPanel">
+  <div class="panel-title"><h2>1 · Persistent Excel Configuration</h2><button class="btn ghost danger" id="clearConfig" disabled>Remove Saved Excel</button></div>
+  <div class="grid2">
+    <div>
+      <div class="drop" id="dropzone" tabindex="0" role="button" aria-label="Upload Excel configuration">
+        <input id="fileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        <strong>Upload or Replace Excel Configuration</strong>
+        <p>Upload once and the workbook will be saved on the backend for the whole team.<br>The Apps sheet supplies App ID, App Name, PRT, Media Source/PID and Reporting Timezone. API tokens stay on the server.</p>
+      </div>
+      <div class="config-stats">
+        <div class="mini"><b id="sAccounts">0</b><span>Backend PRTs</span></div>
+        <div class="mini"><b id="sApps">0</b><span>PID rows</span></div>
+        <div class="mini"><b id="sPids">0</b><span>PIDs</span></div>
+        <div class="mini"><b id="sPrts">0</b><span>PRTs in config</span></div>
+      </div>
+      <div class="notice ok">AppsFlyer tokens are stored on the backend by PRT. The uploaded Excel configuration is also saved on the persistent disk and auto-loads for every team member.</div>
+      <div id="configMessage"></div>
+    </div>
+    <div>
+      <label>Loaded rows — every App + PID + PRT scope stays separate</label>
+      <div class="config-list" id="configList"><div class="empty">No configuration is loaded yet.</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="manualPanel">
+  <div class="panel-title"><h2>2 · Add an App Row Manually</h2><span class="muted" style="font-size:11px">Saved on the server and shared with the team</span></div>
+  <form id="manualForm" class="manual-grid">
+    <div><label>App Name</label><input id="mAppName" type="text" placeholder="Upstox" required></div>
+    <div><label>App ID</label><input id="mAppId" type="text" placeholder="in.upstox.app" required></div>
+    <div><label>Media Source / PID</label><input id="mPid" type="text" placeholder="adsphiremx8_int" required></div>
+    <div><label>PRT ID</label><input id="mPrt" type="text" list="prtOptions" placeholder="adsphirein749" required><datalist id="prtOptions"></datalist></div>
+    <div><label>Reporting Timezone</label><select id="mTimezone"><option>Asia/Kolkata</option><option>Asia/Manila</option><option>Asia/Jakarta</option><option>UTC</option></select></div>
+    <div><label>Notes</label><input id="mNotes" type="text" placeholder="Optional"></div>
+    <button class="btn primary manual-submit" type="submit">Save App Row</button>
+  </form>
+  <div id="manualMessage"></div>
+  <div class="manual-manage">
+    <button class="btn ghost" id="manageManualBtn" type="button" aria-expanded="false" disabled>Manage Saved Apps (0)</button>
+  </div>
+  <div class="manual-list" id="manualList"><div class="empty">No manually saved rows.</div></div>
+</section>
+
+<section class="panel" id="filtersPanel" style="display:none">
+  <div class="panel-title"><h2>3 · Traffic Filters</h2><span class="muted" style="font-size:11px">Strict scope: App + PID + PRT</span></div>
+  <div class="grid2">
+    <div class="chip-wrap"><label>Selected PIDs</label><div class="chips" id="pidChips"></div><div class="chip-tools"><button class="tiny" data-set="pid" data-action="all">Select all</button><button class="tiny" data-set="pid" data-action="none">Clear all</button></div></div>
+    <div class="chip-wrap"><label>Selected PRTs</label><div class="chips" id="prtChips"></div><div class="chip-tools"><button class="tiny" data-set="prt" data-action="all">Select all</button><button class="tiny" data-set="prt" data-action="none">Clear all</button></div></div>
+  </div>
+  <div class="notice">Only configured App + PID + PRT rows are included. PID and PRT filters use <b>AND</b> logic.</div>
+</section>
+
+<section class="panel">
+  <div class="runbar">
+    <div class="run-scope">
+      <label for="runApp">App to check</label>
+      <select id="runApp" disabled><option value="">All configured apps</option></select>
+    </div>
+    <div class="seg" id="dateSeg">
+      <button data-r="today" class="on">Today (App TZ)</button><button data-r="yesterday">Yesterday (App TZ)</button><button data-r="daybefore">Day before</button><button data-r="last7">Last 7d</button><button data-r="custom">Custom</button>
+    </div>
+    <div class="custom-dates" id="customDates"><input type="date" id="dFrom"><span class="muted">→</span><input type="date" id="dTo"></div>
+    <button class="btn primary" id="runBtn" disabled>▶ Run Summary</button>
+    <div id="status">Saved configuration will auto-load. Upload Excel only when replacing it, or use a saved manual row.</div>
+  </div>
+</section>
+
+<div class="alerts" id="alerts"><section class="panel"><div class="alert-head" id="alertHead"></div><div class="alert-body" id="alertBody"></div></section></div>
+
+<div class="kpis" id="kpis" style="display:none">
+  <div class="kpi" style="--kc:var(--ink)"><div class="k-label">Total Traffic</div><div class="k-val" id="kTraffic">–</div><div class="k-sub">attributed + real-time blocked</div></div>
+  <div class="kpi" style="--kc:var(--clean)"><div class="k-label">Clean Installs</div><div class="k-val num-c" id="kClean">–</div><div class="k-sub">attributed installs minus PA</div></div>
+  <div class="kpi" style="--kc:var(--blocked)"><div class="k-label">Blocked Installs</div><div class="k-val num-b" id="kBlocked">–</div><div class="k-sub" id="kBlockedPct">–</div></div>
+  <div class="kpi" style="--kc:var(--pa)"><div class="k-label">PA Installs</div><div class="k-val num-p" id="kPA">–</div><div class="k-sub" id="kPAPct">–</div></div>
+  <div class="kpi" style="--kc:var(--accent)"><div class="k-label">Total Fraud %</div><div class="k-val" id="kFraud">–</div><div class="k-sub">(blocked + PA) ÷ total traffic</div></div>
+</div>
+
+<section class="panel" id="tablePanel" style="display:none">
+  <div class="drill-filters" id="globalFilters">
+    <div class="drill-title">
+      <strong>Global Report Filters</strong>
+      <span>These filters apply to every view, KPI, fraud reason and CSV export.</span>
+    </div>
+    <div class="global-filter-grid">
+      <div class="drill-field"><label for="filterPid">Media Source / PID</label><select id="filterPid"><option value="">All PIDs</option></select></div>
+      <div class="drill-field"><label for="filterPrt">PRT</label><select id="filterPrt"><option value="">All PRTs</option></select></div>
+      <div class="drill-field"><label for="filterAccount">Account</label><select id="filterAccount"><option value="">All accounts</option></select></div>
+      <div class="drill-field"><label for="filterApp">App</label><select id="filterApp"><option value="">All apps</option></select></div>
+      <div class="drill-field"><label for="filterAppId">App ID</label><select id="filterAppId"><option value="">All App IDs</option></select></div>
+      <div class="drill-field"><label for="filterDate">Day</label><select id="filterDate"><option value="">All days</option></select></div>
+    </div>
+    <div class="global-filter-actions">
+      <button class="btn ghost compact" id="clearGlobalFilters" type="button">Reset all filters</button>
+      <button class="btn download-filter compact" id="dlContextBtn" type="button" disabled>↓ Download filtered CSV</button>
+      <div class="drill-summary" id="globalFilterSummary">Run a report to populate the filters.</div>
+    </div>
+  </div>
+  <div class="tbl-head">
+    <div class="seg" id="groupSeg">
+      <button data-g="pid">PID</button><button data-g="prt">PRT</button><button data-g="acct">Account</button><button data-g="app">App</button><button data-g="app_id">App ID</button><button data-g="pid_app" class="on">PID × App</button><button data-g="site">Site ID</button><button data-g="campaign">Campaign</button><button data-g="date">Day</button>
+    </div>
+    <div class="legend"><span><b style="background:var(--clean)"></b>Clean</span><span><b style="background:var(--blocked)"></b>Blocked</span><span><b style="background:var(--pa)"></b>PA</span></div>
+    <input type="text" id="search" placeholder="Search source…" style="max-width:210px">
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th data-sort="key">Source</th><th data-sort="traffic">Traffic</th><th data-sort="installs">Attributed</th><th data-sort="clean">Clean</th><th data-sort="blocked">Blocked</th><th data-sort="pa">PA</th><th data-sort="blockedPct">Blocked %</th><th data-sort="paPct">PA %</th><th data-sort="fraudPct">Fraud %</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="emptyMsg" style="display:none">No data was found for the selected filters and date range.</div>
+</section>
+
+<section class="panel" id="reasonsPanel" style="display:none">
+  <div class="panel-title"><h2>Fraud Reasons</h2><span class="muted" id="reasonCount" style="font-size:11px"></span></div>
+  <div class="table-scroll" style="max-height:480px">
+    <table><thead><tr><th style="text-align:left">Type</th><th style="text-align:left">Current source</th><th style="text-align:left">App</th><th style="text-align:left">Reason</th><th style="text-align:left">Sub reason</th><th>Count</th><th>% of fraud</th></tr></thead><tbody id="reasonsBody"></tbody></table>
+  </div>
+</section>
+
+<section class="panel" id="statusPanel" style="display:none">
+  <div class="panel-title"><h2>Report Completeness</h2><span class="muted" style="font-size:11px">CSV exports disabled when required data fails/truncates</span></div>
+  <div class="status-grid" id="statusGrid"></div>
+</section>
+
+<details class="help">
+  <summary>Formulas, freshness & setup notes</summary>
+  <p style="margin-top:8px"><b>Total traffic</b> = attributed installs + blocked installs. <b>Clean installs</b> = attributed installs − post-attribution installs. <b>Blocked %</b>, <b>PA %</b> and <b>Total fraud %</b> all use total traffic as denominator.<br>
+  Raw <code>installs_report</code> is used first so PRT/Site ID/Campaign breakdown stays available. If raw access fails, returns 0 rows, or no configured PID/PRT row matches, aggregate <code>partners_by_date_report</code> is automatically used for PID/App-level install volume. Aggregate fallback does not provide Site ID/Campaign install detail. Raw requests use a 1,000,000-row cap and the dashboard marks the run incomplete if the cap is reached.<br>
+  Post-attribution data is updated later than real-time blocked data. Today/recent ranges are provisional and can change. Each enabled Apps Excel row is treated as a separate App + PID + optional PRT scope. Different PIDs are never merged in the default PID × App view. The orange Global Report Filters bar can filter every view by PID, PRT, Account, App, App ID and Day. KPIs, fraud reasons and filtered CSV exports follow the same scope. API calls for the same app are fetched once internally only to save quota; calculations remain separate. Each app uses its configured Reporting Timezone. The timezone value must match that app's AppsFlyer App Settings. AppsFlyer tokens are selected server-side from the PRT ID and are never sent to the browser. The most recently uploaded Excel configuration is saved on the persistent disk and automatically loaded for all team members until it is replaced or removed.</p>
+</details>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const MAX_RAW_ROWS = 1000000;
+const state = {
+  config:{accounts:[],apps:[],fetchApps:[],filename:"",errors:[]},
+  excelObjects:[],savedManual:[],savedExcelMeta:{saved:false,filename:"",saved_at:""},backendPrts:new Set(),csrf:"",
+  allPids:[],allPrts:[],pids:new Set(),prts:new Set(),
+  runAppId:"",
+  range:"today",groupBy:"pid_app",rows:[],statuses:[],lastRun:null,
+  filters:{pid:"",prt:"",account:"",app:"",appId:"",date:""},sort:{key:"traffic",dir:"desc"}
+};
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s??"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+const splitIds = v => String(v??"").split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
+const enabled = v => !["no","false","0","disabled","inactive","off"].includes(String(v??"").trim().toLowerCase());
+const TZ_ALIASES={
+  "utc":"UTC","gmt":"UTC",
+  "india":"Asia/Kolkata","in":"Asia/Kolkata","ist":"Asia/Kolkata","asia/kolkata":"Asia/Kolkata",
+  "philippines":"Asia/Manila","philippine":"Asia/Manila","ph":"Asia/Manila","pht":"Asia/Manila","asia/manila":"Asia/Manila",
+  "indonesia":"Asia/Jakarta","id":"Asia/Jakarta","wib":"Asia/Jakarta","jakarta":"Asia/Jakarta","asia/jakarta":"Asia/Jakarta"
+};
+function resolveTimezone(r,appName,appId){
+  const raw=String(pick(r,["reporting_timezone","timezone","report_timezone","time_zone","tz"])).trim();
+  const geo=String(pick(r,["geo","country","country_code","market"])).trim();
+  const key=(raw||geo).toLowerCase();
+  if(key && TZ_ALIASES[key])return TZ_ALIASES[key];
+  if(raw){try{new Intl.DateTimeFormat("en-US",{timeZone:raw}).format();return raw;}catch(_){}}
+  if(/gcash/i.test(`${appName} ${appId}`))return "Asia/Manila";
+  return "UTC";
+}
+function pick(o,aliases){for(const a of aliases){if(o[a]!==undefined && String(o[a]).trim()!=="") return o[a];}return "";}
+function localDate(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+
+/* ---------- XLSX import through local Python server ---------- */
+const dropzone=$("dropzone"), fileInput=$("fileInput");
+dropzone.onclick=()=>fileInput.click();
+dropzone.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fileInput.click();}};
+["dragenter","dragover"].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add("drag");}));
+["dragleave","drop"].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove("drag");}));
+dropzone.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f) importFile(f);});
+fileInput.onchange=()=>{if(fileInput.files[0]) importFile(fileInput.files[0]);};
+
+async function importFile(file){
+  const msg=$("configMessage");
+  if(!/\.xlsx$/i.test(file.name)){msg.innerHTML='<div class="notice err">Only .xlsx files are supported.</div>';return;}
+  msg.innerHTML='<div class="notice"><span class="spinner"></span>Reading Excel configuration…</div>';
+  try{
+    const res=await fetch("/config/import",{method:"POST",headers:{"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","X-CSRF-Token":state.csrf,"X-P360-Filename":encodeURIComponent(file.name)},body:file});
+    const data=await res.json().catch(()=>({error:"Invalid server response"}));
+    if(!res.ok) throw new Error(data.error||`Upload failed (${res.status})`);
+    state.savedExcelMeta={saved:true,filename:data.filename||file.name,saved_at:data.saved_at||""};
+    loadConfig(data.sheets,`${state.savedExcelMeta.filename} · saved on server`);
+    msg.innerHTML=`<div class="notice ok"><b>${esc(state.savedExcelMeta.filename)}</b> is now saved on the backend and will auto-load for the whole team.</div>`;
+  }catch(err){
+    msg.innerHTML=`<div class="notice err">${esc(err.message)}</div>`;
+  }finally{fileInput.value="";}
+}
+
+function matrixObjects(matrix){
+  const first=(matrix||[]).findIndex(row=>row.some(v=>String(v??"").trim()));
+  if(first<0)return [];
+  const headers=matrix[first].map(norm);
+  return matrix.slice(first+1).filter(row=>row.some(v=>String(v??"").trim())).map(row=>{
+    const o={};headers.forEach((h,i)=>{if(h)o[h]=row[i]??"";});return o;
+  });
+}
+function sheetByName(sheets,name){const key=Object.keys(sheets).find(k=>norm(k)===norm(name));return key?sheets[key]:null;}
+function loadConfig(sheets,filename){
+  state.excelObjects=matrixObjects(sheetByName(sheets,"Apps")||sheetByName(sheets,"Config")||[]);
+  rebuildConfig(filename||"Excel upload");
+}
+function rebuildConfig(filename="",extraErrors=[]){
+  const errors=[...extraErrors];
+  const rows=[];
+  state.excelObjects.forEach((row,index)=>rows.push({row,index,source:"Excel"}));
+  state.savedManual.forEach((row,index)=>rows.push({row,index,source:"Saved"}));
+  const apps=[];const exactSeen=new Set();
+  rows.forEach(({row:r,index,source})=>{
+    if(!enabled(pick(r,["enabled","active","status","use"])))return;
+    const displayRow=source==="Excel"?index+2:index+1;
+    const appId=String(pick(r,["app_id","appid","application_id","bundle_id","bundle","package_name"])).trim();
+    const appName=String(pick(r,["app_name","name","application_name"])).trim()||appId;
+    const pidList=splitIds(pick(r,["pid_ids","pid_id","pids","pid","media_sources","media_source"]));
+    const prtList=splitIds(pick(r,["prt_ids","prt_id","prts","prt","af_prt","agencies","agency"]));
+    const notes=String(pick(r,["notes","note"])).trim();
+    const timezone=resolveTimezone(r,appName,appId);
+    if(!appId){errors.push(`${source} row ${displayRow}: App ID is missing.`);return;}
+    if(!pidList.length){errors.push(`${source} row ${displayRow} · ${appName}: Media Source / PID is required.`);return;}
+    if(!prtList.length){errors.push(`${source} row ${displayRow} · ${appName}: PRT ID is required for backend token selection.`);return;}
+    if(pidList.length>1)errors.push(`${source} row ${displayRow} · ${appName}: multiple PIDs were split into separate scopes.`);
+    for(const pid of pidList){for(const prt of prtList){
+      const key=[appId,pid,prt,timezone].join("\u0001");
+      if(exactSeen.has(key)){errors.push(`${source} row ${displayRow} · ${appName}: duplicate App + PID + PRT ignored (${pid} / ${prt}).`);continue;}
+      exactSeen.add(key);
+      const tokenConfigured=state.backendPrts.has(prt);
+      if(!tokenConfigured)errors.push(`${source} row ${displayRow} · ${appName}: no backend token is configured for PRT ${prt}.`);
+      apps.push({scopeId:`${source.toLowerCase()}${displayRow}:${pid}:${prt}`,excelRow:displayRow,source,account:prt,appId,appName,pid,prt,pids:[pid],prts:[prt],timezone,notes,tokenConfigured});
+    }}
+  });
+  const fetchMap=new Map();
+  for(const scope of apps){
+    const key=[scope.appId,scope.prt,scope.timezone].join("\u0001");
+    if(!fetchMap.has(key))fetchMap.set(key,{account:scope.prt,prt:scope.prt,appId:scope.appId,appName:scope.appName,timezone:scope.timezone,scopes:[]});
+    fetchMap.get(key).scopes.push(scope);
+  }
+  const fetchApps=[...fetchMap.values()];
+  state.config={accounts:[...state.backendPrts],apps,fetchApps,filename:filename||"Saved configuration",errors};
+  state.allPids=[...new Set(apps.map(a=>a.pid))].sort();
+  state.allPrts=[...new Set(apps.map(a=>a.prt).filter(Boolean))].sort();
+  state.pids=new Set(state.allPids);state.prts=new Set(state.allPrts);
+  if(state.runAppId&&!apps.some(a=>a.appId===state.runAppId))state.runAppId="";
+  state.filters={pid:"",prt:"",account:"",app:"",appId:"",date:""};state.rows=[];state.statuses=[];state.lastRun=null;
+  resetResults();renderConfig();renderRunAppSelector();renderFilterChips();renderGlobalFilters();renderManualList();
+}
+function renderConfig(){
+  const c=state.config;
+  $("sAccounts").textContent=state.backendPrts.size;
+  $("sApps").textContent=c.apps.length;$("sPids").textContent=state.allPids.length;$("sPrts").textContent=state.allPrts.length;
+  $("clearConfig").disabled=!state.savedExcelMeta.saved;$("savedExcelDownload").style.display=state.savedExcelMeta.saved?"":"none";$("runBtn").disabled=!c.apps.length;$("filtersPanel").style.display=c.apps.length?"":"none";
+  const list=$("configList");
+  if(!c.apps.length){list.innerHTML='<div class="empty">No valid app rows are loaded.</div>';}
+  else{
+    list.innerHTML='<div class="config-row header"><div>Source / App</div><div>Exact source scope</div><div>Backend token / Timezone</div></div>'+c.apps.map(a=>`<div class="config-row"><div><b>${esc(a.source)} ${a.excelRow} · ${esc(a.appName)}</b><span class="sub">${esc(a.appId)}</span></div><div>${esc(a.prt)}<span class="sub">PID: ${esc(a.pid)} · PRT: ${esc(a.prt)}</span></div><div class="${a.tokenConfigured?"token-ok":"token-missing"}">${a.tokenConfigured?"Token configured":"Token missing"}<span class="sub">${esc(a.timezone)}</span></div></div>`).join("");
+  }
+  const msg=$("configMessage");
+  if(c.apps.length&&!c.errors.length)msg.innerHTML=`<div class="notice ok"><b>${esc(c.filename)}</b> loaded successfully.</div>`;
+  else if(c.apps.length)msg.innerHTML=`<div class="notice warn"><b>${esc(c.filename)}</b> loaded with warnings:<br>${c.errors.map(esc).join("<br>")}</div>`;
+  else msg.innerHTML=`<div class="notice err">No usable configuration is loaded.<br>${c.errors.map(esc).join("<br>")}</div>`;
+  $("status").textContent=c.apps.length?`${c.apps.length} separate PID row(s) ready. Select a date and run the summary.`:"Upload Excel or save an app row manually.";
+}
+function renderRunAppSelector(){
+  const select=$("runApp");
+  const appMap=new Map();
+  for(const app of state.config.apps){
+    if(!appMap.has(app.appId))appMap.set(app.appId,app.appName||app.appId);
+  }
+  const apps=[...appMap.entries()].sort((a,b)=>a[1].localeCompare(b[1],undefined,{numeric:true,sensitivity:"base"})||a[0].localeCompare(b[0]));
+  select.innerHTML='<option value="">All configured apps</option>'+apps.map(([appId,appName])=>`<option value="${esc(appId)}">${esc(appName)} — ${esc(appId)}</option>`).join("");
+  select.value=state.runAppId;
+  select.disabled=!apps.length;
+}
+$("runApp").onchange=()=>{
+  state.runAppId=$("runApp").value;
+  resetResults();
+  const selected=state.config.apps.filter(a=>!state.runAppId||a.appId===state.runAppId);
+  $("status").textContent=state.runAppId
+    ? `${selected[0]?.appName||state.runAppId} selected · ${selected.length} separate PID row(s) ready.`
+    : `${state.config.apps.length} separate PID row(s) ready. Select a date and run the summary.`;
+};
+$("clearConfig").onclick=async()=>{
+  if(!state.savedExcelMeta.saved||!confirm("Remove the saved Excel configuration for the entire team? Manually saved rows will remain."))return;
+  const msg=$("configMessage");msg.innerHTML='<div class="notice"><span class="spinner"></span>Removing saved Excel configuration…</div>';
+  try{
+    const res=await fetch("/api/saved-excel-config",{method:"DELETE",headers:{"X-CSRF-Token":state.csrf}});
+    const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||"Could not remove the saved Excel configuration.");
+    state.excelObjects=[];state.savedExcelMeta={saved:false,filename:"",saved_at:""};rebuildConfig("Server-saved manual configuration");
+    msg.innerHTML='<div class="notice ok">Saved Excel configuration removed. Manually saved rows were kept.</div>';
+  }catch(err){msg.innerHTML=`<div class="notice err">${esc(err.message)}</div>`;}
+};
+
+/* ---------- chips ---------- */
+function renderChips(elId,values,set,type){
+  const el=$(elId);el.innerHTML="";
+  if(!values.length){el.innerHTML='<span class="muted" style="font-size:12px">No IDs are configured for this dimension.</span>';return;}
+  values.forEach(v=>{const b=document.createElement("button");b.className="chip"+(set.has(v)?" on":"");b.textContent=v;b.type="button";b.onclick=()=>{set.has(v)?set.delete(v):set.add(v);renderFilterChips();if(state.lastRun)render();};el.appendChild(b);});
+}
+function renderFilterChips(){renderChips("pidChips",state.allPids,state.pids,"pid");renderChips("prtChips",state.allPrts,state.prts,"prt");}
+document.querySelectorAll(".chip-tools .tiny").forEach(b=>b.onclick=()=>{const vals=b.dataset.set==="pid"?state.allPids:state.allPrts;const set=b.dataset.set==="pid"?state.pids:state.prts;if(b.dataset.action==="all")vals.forEach(v=>set.add(v));else set.clear();renderFilterChips();if(state.lastRun)render();});
+
+
+/* ---------- hosted backend + shared manual rows ---------- */
+async function bootstrapHosted(){
+  try{
+    const [prtRes,appsRes,excelRes]=await Promise.all([fetch("/api/prts"),fetch("/api/saved-apps"),fetch("/api/saved-excel-config")]);
+    if(!prtRes.ok||!appsRes.ok||!excelRes.ok)throw new Error("Could not load backend configuration.");
+    const prtData=await prtRes.json(),appsData=await appsRes.json(),excelData=await excelRes.json();
+    state.backendPrts=new Set(prtData.prts||[]);state.savedManual=appsData.apps||[];state.csrf=appsData.csrf||excelData.csrf||"";
+    if(excelData.saved&&excelData.sheets){
+      state.savedExcelMeta={saved:true,filename:excelData.filename||"P360_Config.xlsx",saved_at:excelData.saved_at||""};
+      state.excelObjects=matrixObjects(sheetByName(excelData.sheets,"Apps")||sheetByName(excelData.sheets,"Config")||[]);
+    }else{state.savedExcelMeta={saved:false,filename:"",saved_at:""};state.excelObjects=[];}
+    renderPrtOptions();rebuildConfig(state.savedExcelMeta.saved?`${state.savedExcelMeta.filename} · auto-loaded from server`:"Server-saved manual configuration");
+  }catch(err){$("manualMessage").innerHTML=`<div class="notice err">${esc(err.message)}</div>`;}
+}
+function renderPrtOptions(){$("prtOptions").innerHTML=[...state.backendPrts].sort().map(x=>`<option value="${esc(x)}"></option>`).join("");}
+function setManualManagerOpen(open){
+  const list=$("manualList"),btn=$("manageManualBtn");if(!list||!btn)return;
+  const shouldOpen=Boolean(open&&state.savedManual.length);
+  list.classList.toggle("show",shouldOpen);btn.setAttribute("aria-expanded",shouldOpen?"true":"false");
+  btn.textContent=`${shouldOpen?"Hide":"Manage"} Saved Apps (${state.savedManual.length})`;
+}
+function renderManualList(){
+  const list=$("manualList"),btn=$("manageManualBtn");if(!list||!btn)return;
+  btn.disabled=!state.savedManual.length;
+  if(!state.savedManual.length){list.innerHTML='<div class="empty">No manually saved rows.</div>';setManualManagerOpen(false);return;}
+  list.innerHTML='<div class="manual-row head"><div>App</div><div>App ID</div><div>PID</div><div>PRT</div><div>Timezone</div><div></div></div>'+state.savedManual.map(r=>`<div class="manual-row"><div><b>${esc(r.app_name)}</b></div><div>${esc(r.app_id)}</div><div>${esc(r.pid)}</div><div>${esc(r.prt)}<span class="sub ${state.backendPrts.has(r.prt)?"token-ok":"token-missing"}">${state.backendPrts.has(r.prt)?" token ready":" token missing"}</span></div><div>${esc(r.timezone)}</div><button class="btn ghost danger" type="button" data-delete-manual="${esc(r.id)}">Delete</button></div>`).join("");
+  list.querySelectorAll("[data-delete-manual]").forEach(b=>b.onclick=()=>deleteManualRow(b.dataset.deleteManual));
+  setManualManagerOpen(list.classList.contains("show"));
+}
+$("manageManualBtn").onclick=()=>setManualManagerOpen(!$("manualList").classList.contains("show"));
+async function refreshSavedApps(){const res=await fetch("/api/saved-apps");const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not refresh saved apps.");state.savedManual=data.apps||[];state.csrf=data.csrf||state.csrf;rebuildConfig(state.savedExcelMeta.saved?`${state.savedExcelMeta.filename} · auto-loaded from server`:"Server-saved manual configuration");}
+$("manualForm").onsubmit=async e=>{
+  e.preventDefault();const msg=$("manualMessage");msg.innerHTML='<div class="notice"><span class="spinner"></span>Saving app row…</div>';
+  const payload={app_name:$("mAppName").value,app_id:$("mAppId").value,pid:$("mPid").value,prt:$("mPrt").value,timezone:$("mTimezone").value,notes:$("mNotes").value};
+  try{const res=await fetch("/api/saved-apps",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":state.csrf},body:JSON.stringify(payload)});const data=await res.json();if(!res.ok)throw new Error(data.error||"Save failed.");e.target.reset();$("mTimezone").value="Asia/Kolkata";await refreshSavedApps();setManualManagerOpen(false);msg.innerHTML='<div class="notice ok">App row saved for the entire team. Use Manage Saved Apps only when you need to review or delete saved rows.</div>';}
+  catch(err){msg.innerHTML=`<div class="notice err">${esc(err.message)}</div>`;}
+};
+async function deleteManualRow(id){if(!confirm("Delete this saved app row?"))return;try{const res=await fetch(`/api/saved-apps/${encodeURIComponent(id)}`,{method:"DELETE",headers:{"X-CSRF-Token":state.csrf}});const data=await res.json();if(!res.ok)throw new Error(data.error||"Delete failed.");await refreshSavedApps();}catch(err){$("manualMessage").innerHTML=`<div class="notice err">${esc(err.message)}</div>`;}}
+bootstrapHosted();
+
+/* ---------- dates ---------- */
+function tzDate(timezone,daysBack=0){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const obj=Object.fromEntries(parts.filter(x=>x.type!=="literal").map(x=>[x.type,x.value]));
+  const d=new Date(Date.UTC(Number(obj.year),Number(obj.month)-1,Number(obj.day)));
+  d.setUTCDate(d.getUTCDate()-daysBack);return d.toISOString().slice(0,10);
+}
+function getRange(timezone="UTC"){const day=n=>tzDate(timezone,n);switch(state.range){case"today":return[day(0),day(0)];case"yesterday":return[day(1),day(1)];case"daybefore":return[day(2),day(2)];case"last7":return[day(7),day(1)];case"custom":return[$("dFrom").value,$("dTo").value];}}
+$("dateSeg").onclick=e=>{const b=e.target.closest("button");if(!b)return;document.querySelectorAll("#dateSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");state.range=b.dataset.r;$("customDates").classList.toggle("show",state.range==="custom");};
+
+/* ---------- CSV parser / API ---------- */
+function forEachCSV(text,onRow){
+  let row=[],cur="",quoted=false,headers=null,count=0;
+  function emitCell(){row.push(cur);cur="";}
+  function emitRow(){
+    emitCell();
+    if(!headers){headers=row.map(h=>String(h).replace(/^\uFEFF/,"").trim().toLowerCase().replace(/\s+/g,"_"));}
+    else if(row.some(v=>String(v).length)){const o={};headers.forEach((h,i)=>o[h]=row[i]??"");onRow(o);count++;}
+    row=[];
+  }
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(quoted){if(ch==='"'){if(text[i+1]==='"'){cur+='"';i++;}else quoted=false;}else cur+=ch;}
+    else if(ch==='"')quoted=true;else if(ch===',')emitCell();else if(ch==='\n')emitRow();else if(ch!=='\r')cur+=ch;
+  }
+  if(cur.length||row.length)emitRow();return count;
+}
+function field(r,names){for(const n of names){if(r[n]!==undefined && String(r[n]).trim()!=="")return String(r[n]).trim();}return "";}
+async function fetchReport(app,kind,path,from,to){
+  const p=new URLSearchParams({from,to,timezone:app.timezone||"UTC"});if(kind==="raw")p.set("maximum_rows",String(MAX_RAW_ROWS));
+  const url=`/af/api/${kind==="raw"?"raw-data":"agg-data"}/export/app/${encodeURIComponent(app.appId)}/${path}/v5?${p}`;
+  const res=await fetch(url,{headers:{"X-P360-PRT":app.prt,Accept:"text/csv"}});const text=await res.text();
+  if(!res.ok){let detail=text.slice(0,220).replace(/\s+/g," ");try{detail=JSON.parse(text).error||detail;}catch(_){ }const e=new Error(`${res.status} · ${detail||path}`);e.status=res.status;throw e;}return text;
+}
+function bucketKey(r){return [r.scopeId,r.appId,r.acct,r.pid,r.prt,r.date,r.site,r.campaign,r.type,r.reason,r.sub].join("\u0001");}
+function mergeBuckets(target,map){for(const r of map.values()){const k=bucketKey(r);const old=target.get(k);if(old)old.n+=r.n;else target.set(k,r);}}
+function commonDims(r,app,type){
+  return {appId:app.appId,appName:app.appName,acct:app.account,type,
+    pid:field(r,["media_source","media_source_(pid)","pid"])||"(unknown PID)",
+    prt:field(r,["af_prt","agency","partner"]),
+    date:(field(r,["install_time","event_time","date"])||"(no date)").slice(0,10),
+    site:field(r,["af_siteid","site_id","siteid","af_sub_siteid"]),campaign:field(r,["campaign","campaign_name"]),reason:"",sub:"",n:1,scopeId:"",excelRow:null};
+}
+function matchScope(b,app){
+  const exact=app.scopes.find(s=>s.pid===b.pid && s.prt && s.prt===b.prt);
+  if(exact)return exact;
+  return app.scopes.find(s=>s.pid===b.pid && !s.prt)||null;
+}
+function applyScope(b,scope){b.scopeId=scope.scopeId;b.excelRow=scope.excelRow;b.configPrt=scope.prt;b.appName=scope.appName;return b;}
+function ingestRaw(text,app,type){
+  const map=new Map();let matched=0;
+  const count=forEachCSV(text,r=>{const b=commonDims(r,app,type);const scope=matchScope(b,app);if(!scope)return;applyScope(b,scope);matched++;if(type!=="installs"){b.reason=field(r,["blocked_reason","fraud_reason","detection_reason","validation_rule","reason"])||"(not reported)";b.sub=field(r,["blocked_sub_reason","fraud_sub_reason","validation_reason_value","sub_reason"]);}const k=bucketKey(b);const old=map.get(k);old?old.n++:map.set(k,b);});
+  return {map,count,matched,truncated:count>=MAX_RAW_ROWS};
+}
+function normId(v){return String(v??"").replace(/^\uFEFF/,"").trim().toLowerCase();}
+function configuredPidFromValue(value,app){
+  const raw=normId(value);if(!raw)return "";
+  // Prefer exact match. Some aggregate exports append a partner/display label,
+  // so a conservative starts-with/contained check is used as a fallback.
+  const exact=app.scopes.find(s=>normId(s.pid)===raw);if(exact)return exact.pid;
+  const loose=app.scopes.find(s=>{
+    const pid=normId(s.pid);return pid&&(raw.startsWith(pid+" ")||raw.startsWith(pid+"(")||raw.includes(" "+pid+" "));
+  });
+  return loose?loose.pid:"";
+}
+function aggregatePid(r,app){
+  const direct=field(r,["media_source","media_source_(pid)","media_source_pid","media_source__pid_","pid","partner_(pid)","partner_pid"]);
+  const matched=configuredPidFromValue(direct,app);if(matched)return matched;
+  // AppsFlyer account/report variants can rename the PID column. Scan the
+  // aggregate row values and map only values matching a configured PID.
+  for(const value of Object.values(r)){const pid=configuredPidFromValue(value,app);if(pid)return pid;}
+  return direct;
+}
+function aggregatePrt(r,app){
+  const direct=field(r,["af_prt","agency","agency/pmd","agency/pmd_(af_prt)","agency_pmd_(af_prt)","agency_(af_prt)","partner","partner_id"]);
+  const raw=normId(direct);if(!raw)return "";
+  const exact=app.scopes.find(s=>s.prt&&normId(s.prt)===raw);return exact?exact.prt:direct;
+}
+function matchAggregateScope(b,app){
+  const pidNorm=normId(b.pid);
+  if(!pidNorm)return null;
+  // Aggregate partner reports frequently omit af_prt/agency. PID is therefore
+  // the primary fallback key; PRT is enforced only when the row actually has it.
+  if(b.prt){
+    const exact=app.scopes.find(s=>normId(s.pid)===pidNorm&&s.prt&&normId(s.prt)===normId(b.prt));
+    if(exact)return exact;
+  }
+  const pidScopes=app.scopes.filter(s=>normId(s.pid)===pidNorm);
+  if(pidScopes.length===1)return pidScopes[0];
+  return null;
+}
+function ingestAggregate(text,app){
+  const map=new Map();let count=0,matched=0,ambiguous=0,unmatched=0;
+  const unmatchedValues=new Set();
+  forEachCSV(text,r=>{
+    count++;
+    const keys=Object.keys(r);
+    const preferred=["installs","total_installs","attributed_installs","non_organic_installs"];
+    const kInst=preferred.find(k=>keys.includes(k))||keys.find(k=>/(^|_)installs$/.test(k))||keys.find(k=>k.endsWith("_installs"));
+    const n=Math.round(parseFloat(String((kInst&&r[kInst])||"0").replace(/[,\s]/g,"")))||0;
+    if(!n)return;
+    const b=commonDims(r,app,"installs");
+    b.pid=aggregatePid(r,app)||b.pid;
+    b.prt=aggregatePrt(r,app)||"";
+    const scope=matchAggregateScope(b,app);
+    if(!scope){
+      const samePid=app.scopes.filter(s=>normId(s.pid)===normId(b.pid));
+      if(samePid.length>1)ambiguous+=n;else unmatched+=n;
+      unmatchedValues.add(b.pid||"(PID column not found)");
+      return;
+    }
+    // Canonical configured values avoid case/format mismatches in grouping.
+    b.pid=scope.pid;b.prt=scope.prt||b.prt;
+    applyScope(b,scope);matched+=n;b.n=n;
+    b.date=(field(r,["date","install_date","day"])||b.date).slice(0,10);
+    b.campaign=field(r,["campaign","campaign_name"]);
+    b.site="";
+    const k=bucketKey(b);const old=map.get(k);old?old.n+=n:map.set(k,b);
+  });
+  return{map,count,matched,ambiguous,unmatched,unmatchedValues:[...unmatchedValues].slice(0,8),truncated:false};
+}
+function reportStatus(app,report,status,detail={}){state.statuses.push({appId:app.appId,appName:app.appName,timezone:app.timezone,range:app.currentRange,report,status,...detail});}
+async function processApp(app,target,progress){
+  app.currentRange=getRange(app.timezone||"UTC");
+
+  // Install volume strategy:
+  // 1) Prefer raw installs for Site ID / Campaign / PRT detail.
+  // 2) If raw access fails, raw is empty, or none of the configured PID scopes match,
+  //    use AppsFlyer aggregate partners_by_date_report for PID/App-level install volume.
+  let rawInstallError=null;
+  let rawInstallOut=null;
+  try{
+    progress(app,"Attributed installs");
+    rawInstallOut=ingestRaw(await fetchReport(app,"raw","installs_report",...app.currentRange),app,"installs");
+    if(rawInstallOut.truncated){
+      mergeBuckets(target,rawInstallOut.map);
+      reportStatus(app,"Attributed installs","truncated",{rows:rawInstallOut.count,matched:rawInstallOut.matched,mode:"raw",message:"Raw report row cap reached."});
+    }else if(rawInstallOut.count>0 && rawInstallOut.matched>0){
+      mergeBuckets(target,rawInstallOut.map);
+      reportStatus(app,"Attributed installs","ok",{rows:rawInstallOut.count,matched:rawInstallOut.matched,mode:"raw"});
+    }else{
+      rawInstallError=new Error(rawInstallOut.count===0
+        ? "Raw installs report returned 0 rows"
+        : `Raw installs had ${rawInstallOut.count} row(s), but 0 matched configured PID/PRT scope(s)`);
+    }
+  }catch(err){rawInstallError=err;}
+
+  if(rawInstallError){
+    try{
+      progress(app,"Installs aggregate fallback");
+      const aggOut=ingestAggregate(await fetchReport(app,"agg","partners_by_date_report",...app.currentRange),app);
+      mergeBuckets(target,aggOut.map);
+      const ambiguityNote=aggOut.ambiguous?` ${aggOut.ambiguous} install(s) could not be assigned because the same App + PID is configured under multiple PRT rows.`:"";
+      const unmatchedNote=aggOut.unmatched?` ${aggOut.unmatched} install(s) did not match configured PID(s). Seen values: ${aggOut.unmatchedValues.join(", ")||"PID column not found"}.`:"";
+      const fallbackStatus=aggOut.matched>0?"fallback":"failed";
+      reportStatus(app,"Attributed installs",fallbackStatus,{
+        rows:aggOut.count,matched:aggOut.matched,mode:"aggregate",
+        message:`${rawInstallError.message}. Aggregate install volume matched by App + PID; Site ID/Campaign detail is unavailable.${ambiguityNote}${unmatchedNote}`
+      });
+    }catch(aggErr){
+      reportStatus(app,"Attributed installs","failed",{message:`Raw: ${rawInstallError.message}; Aggregate: ${aggErr.message}`});
+    }
+  }
+
+  try{progress(app,"Blocked installs");const out=ingestRaw(await fetchReport(app,"raw","blocked_installs_report",...app.currentRange),app,"blocked");mergeBuckets(target,out.map);reportStatus(app,"Blocked installs",out.truncated?"truncated":"ok",{rows:out.count,matched:out.matched,mode:"raw"});}
+  catch(err){reportStatus(app,"Blocked installs","failed",{message:err.message});}
+  try{progress(app,"Post-attribution");const out=ingestRaw(await fetchReport(app,"raw","detection",...app.currentRange),app,"pa");mergeBuckets(target,out.map);reportStatus(app,"Post-attribution",out.truncated?"truncated":"ok",{rows:out.count,matched:out.matched,mode:"raw"});}
+  catch(err){reportStatus(app,"Post-attribution","failed",{message:err.message});}
+}
+async function pool(items,limit,worker){let next=0;const runners=Array.from({length:Math.min(limit,items.length)},async()=>{while(next<items.length){const i=next++;await worker(items[i],i);}});await Promise.all(runners);}
+
+/* ---------- run ---------- */
+$("runBtn").onclick=runAll;
+async function runAll(){
+  const range=getRange("UTC"),st=$("status");
+  if(!state.config.apps.length){st.textContent="No app configuration is loaded.";return;}
+  if(!range[0]||!range[1]){st.textContent="Select custom dates.";return;}
+  if(range[0]>range[1]){st.textContent="The From date cannot be later than the To date.";return;}
+  const selectedScopes=state.config.apps.filter(a=>!state.runAppId||a.appId===state.runAppId);
+  const fetchApps=(state.config.fetchApps||[]).filter(a=>!state.runAppId||a.appId===state.runAppId);
+  if(!fetchApps.length){st.textContent="The selected app is no longer available in the configuration.";return;}
+  state.rows=[];state.statuses=[];state.lastRun={range,from:range[0],to:range[1],perAppTimezone:true};
+  $("runBtn").disabled=true;$("dlBtn").disabled=true;$("dlReasonsBtn").disabled=true;
+  state.lastRun.appId=state.runAppId;
+  let done=0;const total=fetchApps.length*3;const target=new Map();
+  const progress=(app,label)=>{done++;st.innerHTML=`<span class="spinner"></span>${esc(app.appName)} · ${esc(label)} · ${Math.min(done,total)}/${total}`;};
+  try{await pool(fetchApps,3,app=>processApp(app,target,progress));state.rows=[...target.values()];render();renderStatuses();const bad=hardIssues();const scopeLabel=state.runAppId?`${selectedScopes[0]?.appName||state.runAppId} only`:"all configured apps";st.textContent=`Done · ${scopeLabel} · ${selectedScopes.length} separate PID row(s) · ${fetchApps.length} unique app pull(s) · ${state.rows.length.toLocaleString()} buckets · per-app timezone reporting${bad.length?` · ${bad.length} completeness issue(s)`:""}`;}
+  catch(err){st.textContent=`Unexpected error: ${err.message}`;}
+  finally{$("runBtn").disabled=false;}
+}
+function hardIssues(){return state.statuses.filter(s=>s.status==="failed"||s.status==="truncated");}
+function resetResults(){state.rows=[];state.statuses=[];state.lastRun=null;state.filters={pid:"",prt:"",account:"",app:"",appId:"",date:""};["kpis","tablePanel","reasonsPanel","statusPanel"].forEach(id=>$(id).style.display="none");$("alerts").classList.remove("show");$("dlBtn").disabled=true;$("dlReasonsBtn").disabled=true;}
+
+/* ---------- global filters / grouping ---------- */
+function effectivePrt(r){return r.configPrt||r.prt||"";}
+function baseFilteredRows(){
+  if(state.allPids.length && !state.pids.size)return [];
+  if(state.allPrts.length && !state.prts.size)return [];
+  return state.rows.filter(r=>{
+    const pidOk=!state.allPids.length||state.pids.has(r.pid);
+    const prt=effectivePrt(r);
+    const prtOk=!state.allPrts.length||!prt||state.prts.has(prt);
+    return pidOk&&prtOk;
+  });
+}
+function rowMatchesGlobal(r,exclude=""){
+  const f=state.filters,prt=effectivePrt(r);
+  if(exclude!=="pid"&&f.pid&&r.pid!==f.pid)return false;
+  if(exclude!=="prt"&&f.prt&&prt!==f.prt)return false;
+  if(exclude!=="account"&&f.account&&(r.acct||"")!==f.account)return false;
+  if(exclude!=="app"&&f.app&&r.appName!==f.app)return false;
+  if(exclude!=="appId"&&f.appId&&r.appId!==f.appId)return false;
+  if(exclude!=="date"&&f.date&&r.date!==f.date)return false;
+  return true;
+}
+function filteredRows(){return baseFilteredRows().filter(r=>rowMatchesGlobal(r));}
+function filterValue(r,key){
+  if(key==="pid")return r.pid||"";
+  if(key==="prt")return effectivePrt(r);
+  if(key==="account")return r.acct||"";
+  if(key==="app")return r.appName||"";
+  if(key==="appId")return r.appId||"";
+  if(key==="date")return r.date||"";
+  return "";
+}
+const FILTER_DEFS={
+  pid:{id:"filterPid",all:"All PIDs"},
+  prt:{id:"filterPrt",all:"All PRTs"},
+  account:{id:"filterAccount",all:"All accounts"},
+  app:{id:"filterApp",all:"All apps"},
+  appId:{id:"filterAppId",all:"All App IDs"},
+  date:{id:"filterDate",all:"All days"}
+};
+function optionLabel(key,value){
+  if(key==="appId"){
+    const row=state.rows.find(r=>r.appId===value);return row?`${row.appName} · ${value}`:value;
+  }
+  return value;
+}
+function renderGlobalFilters(){
+  $("search").placeholder=state.groupBy==="site"?"Search Site ID…":state.groupBy==="campaign"?"Search campaign…":state.groupBy==="date"?"Search day…":"Search source…";
+  const base=baseFilteredRows();
+  for(const [key,def] of Object.entries(FILTER_DEFS)){
+    const sel=$(def.id);if(!sel)continue;
+    const candidates=base.filter(r=>rowMatchesGlobal(r,key));
+    const values=[...new Set(candidates.map(r=>filterValue(r,key)).filter(Boolean))].sort((a,b)=>key==="date"?a.localeCompare(b):a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"}));
+    if(state.filters[key]&&!values.includes(state.filters[key]))state.filters[key]="";
+    sel.innerHTML=`<option value="">${esc(def.all)}</option>`+values.map(v=>`<option value="${esc(v)}">${esc(optionLabel(key,v))}</option>`).join("");
+    sel.value=state.filters[key];
+  }
+  $("dlContextBtn").disabled=!state.lastRun;
+  updateGlobalFilterSummary();
+}
+function groupNoun(){return {pid:"PIDs",prt:"PRTs",acct:"Accounts",app:"Apps",app_id:"App IDs",pid_app:"PID × App rows",site:"Site IDs",campaign:"Campaigns",date:"Days"}[state.groupBy]||"rows";}
+function updateGlobalFilterSummary(groupCount){
+  const el=$("globalFilterSummary");if(!el)return;
+  if(!state.lastRun){el.textContent="Run a report to populate the filters.";return;}
+  const count=groupCount===undefined?aggregate().length:groupCount;
+  const selected=[];
+  if(state.filters.pid)selected.push(`PID: ${state.filters.pid}`);
+  if(state.filters.prt)selected.push(`PRT: ${state.filters.prt}`);
+  if(state.filters.account)selected.push(`Account: ${state.filters.account}`);
+  if(state.filters.app)selected.push(`App: ${state.filters.app}`);
+  if(state.filters.appId)selected.push(`App ID: ${state.filters.appId}`);
+  if(state.filters.date)selected.push(`Day: ${state.filters.date}`);
+  el.innerHTML=`Showing <b>${Number(count).toLocaleString()}</b> ${esc(groupNoun())}${selected.length?` · ${selected.map(x=>`<b>${esc(x)}</b>`).join(" · ")}`:" · All data"}`;
+}
+for(const [key,def] of Object.entries(FILTER_DEFS)){
+  const el=$(def.id);if(el)el.onchange=()=>{state.filters[key]=el.value;renderGlobalFilters();if(state.lastRun)render();};
+}
+$("clearGlobalFilters").onclick=()=>{state.filters={pid:"",prt:"",account:"",app:"",appId:"",date:""};renderGlobalFilters();if(state.lastRun)render();};
+$("dlContextBtn").onclick=()=>$("dlBtn").click();
+function groupKey(r){switch(state.groupBy){case"pid":return r.pid;case"prt":return r.prt||"(no PRT in report)";case"acct":return r.acct;case"app":return r.appName;case"app_id":return r.appId;case"pid_app":return `${r.pid} · ${r.appName}${r.configPrt?` · ${r.configPrt}`:""}`;case"site":return r.site||"(no site ID)";case"campaign":return r.campaign||"(no campaign)";case"date":return r.date;}}
+function aggregate(){
+  const map=new Map();for(const r of filteredRows()){const k=groupKey(r);if(!map.has(k))map.set(k,{key:k,installs:0,blocked:0,pa:0,apps:new Set(),prts:new Set(),pids:new Set()});const g=map.get(k);g[r.type] += r.n;g.apps.add(r.appName);if(r.prt)g.prts.add(r.prt);if(r.pid)g.pids.add(r.pid);}
+  return [...map.values()].map(g=>{g.traffic=g.installs+g.blocked;g.clean=Math.max(0,g.installs-g.pa);g.blockedPct=pct(g.blocked,g.traffic);g.paPct=pct(g.pa,g.traffic);g.fraudPct=pct(g.blocked+g.pa,g.traffic);return g;});
+}
+const pct=(n,d)=>d>0?n/d*100:null;const fmtPct=v=>v===null?"—":v.toFixed(2)+"%";const pctClass=v=>v===null?"na":v>=25?"pct-hi":v>=10?"pct-mid":"pct-lo";
+function sortedGroups(groups){const {key,dir}=state.sort;const m=dir==="asc"?1:-1;return groups.sort((a,b)=>{const av=a[key],bv=b[key];if(typeof av==="string")return av.localeCompare(bv)*m;return ((av??-Infinity)-(bv??-Infinity))*m;});}
+function render(){
+  renderGlobalFilters();
+  const groups=aggregate();const q=$("search").value.trim().toLowerCase();const shown=sortedGroups(q?groups.filter(g=>g.key.toLowerCase().includes(q)):groups);updateGlobalFilterSummary(groups.length);
+  const T=groups.reduce((a,g)=>({installs:a.installs+g.installs,blocked:a.blocked+g.blocked,pa:a.pa+g.pa}),{installs:0,blocked:0,pa:0});const traffic=T.installs+T.blocked;const clean=Math.max(0,T.installs-T.pa);
+  $("kTraffic").textContent=traffic.toLocaleString();$("kClean").textContent=clean.toLocaleString();$("kBlocked").textContent=T.blocked.toLocaleString();$("kPA").textContent=T.pa.toLocaleString();$("kBlockedPct").textContent=fmtPct(pct(T.blocked,traffic))+" of total traffic";$("kPAPct").textContent=fmtPct(pct(T.pa,traffic))+" of total traffic";$("kFraud").textContent=fmtPct(pct(T.blocked+T.pa,traffic));$("kpis").style.display="";$("tablePanel").style.display="";
+  const tb=$("tbody");tb.innerHTML="";$("emptyMsg").style.display=shown.length?"none":"";
+  for(const g of shown){const cW=g.traffic?g.clean/g.traffic*100:0,bW=g.traffic?g.blocked/g.traffic*100:0,pW=g.traffic?g.pa/g.traffic*100:0;let sub="";if(state.groupBy==="pid")sub=[...g.prts].join(", ");else if(["prt","acct"].includes(state.groupBy))sub=[...g.apps].join(", ");else if(["site","campaign"].includes(state.groupBy))sub=[...g.pids].join(", ");const tr=document.createElement("tr");tr.innerHTML=`<td class="src">${esc(g.key)}${sub?`<span class="sub">${esc(sub)}</span>`:""}<div class="comp"><i class="c" style="width:${cW}%"></i><i class="b" style="width:${bW}%"></i><i class="p" style="width:${pW}%"></i></div></td><td>${g.traffic.toLocaleString()}</td><td>${g.installs.toLocaleString()}</td><td class="num-c">${g.clean.toLocaleString()}</td><td class="num-b">${g.blocked.toLocaleString()}</td><td class="num-p">${g.pa.toLocaleString()}</td><td class="${pctClass(g.blockedPct)}">${fmtPct(g.blockedPct)}</td><td class="${pctClass(g.paPct)}">${fmtPct(g.paPct)}</td><td class="${pctClass(g.fraudPct)}">${fmtPct(g.fraudPct)}</td>`;tb.appendChild(tr);}
+  renderReasons();renderAlerts();const complete=!hardIssues().length;$("dlBtn").disabled=false;$("dlReasonsBtn").disabled=!complete;
+}
+$("groupSeg").onclick=e=>{const b=e.target.closest("button");if(!b)return;document.querySelectorAll("#groupSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");state.groupBy=b.dataset.g;renderGlobalFilters();if(state.lastRun)render();};
+$("search").oninput=()=>{if(state.lastRun)render();};
+document.querySelectorAll("#tablePanel th[data-sort]").forEach(th=>th.onclick=()=>{const key=th.dataset.sort;if(state.sort.key===key)state.sort.dir=state.sort.dir==="asc"?"desc":"asc";else state.sort={key,dir:key==="key"?"asc":"desc"};render();});
+
+function renderReasons(){
+  const rows=filteredRows().filter(r=>r.type!=="installs");const map=new Map();let total=0;
+  for(const r of rows){const source=groupKey(r),k=[r.type,source,r.appName,r.reason||"(not reported)",r.sub||"—"].join("\u0001");map.set(k,(map.get(k)||0)+r.n);total+=r.n;}
+  const list=[...map.entries()].sort((a,b)=>b[1]-a[1]);$("reasonsPanel").style.display="";$("reasonCount").textContent=`${list.length.toLocaleString()} reason groups`;
+  const body=$("reasonsBody");body.innerHTML="";if(!list.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--faint);font-family:Inter">No blocked or post-attribution rows were found.</td></tr>';return;}
+  for(const [k,count] of list.slice(0,500)){const [type,source,app,reason,sub]=k.split("\u0001");const tr=document.createElement("tr");tr.innerHTML=`<td style="text-align:left"><span class="${type==="blocked"?"num-b":"num-p"}" style="font-weight:800">${type==="blocked"?"Blocked":"PA"}</span></td><td style="text-align:left">${esc(source)}</td><td style="text-align:left">${esc(app)}</td><td style="text-align:left">${esc(reason)}</td><td style="text-align:left;color:var(--dim)">${esc(sub)}</td><td>${count.toLocaleString()}</td><td>${fmtPct(pct(count,total))}</td>`;body.appendChild(tr);}
+}
+function renderAlerts(){
+  const issues=[];const bad=hardIssues();if(bad.length)issues.push(`${bad.length} required report(s) failed or reached the row cap. Metrics may be partial; Reasons CSV is disabled.`);
+  const fallback=state.statuses.filter(s=>s.status==="fallback");if(fallback.length)issues.push(`${fallback.length} app(s) used aggregate install fallback. PRT, Site ID and Campaign install detail can be incomplete.`);
+  if(state.range==="today"||state.range==="yesterday")issues.push("Recent post-attribution data is provisional and can change after the next AppsFlyer refresh.");
+  const over=aggregate().filter(g=>g.pa>g.installs);if(over.length)issues.push(`${over.length} group(s) have more PA installs than attributed installs. Check date, filter and report alignment.`);
+  if(!issues.length){$("alerts").classList.remove("show");return;}$("alerts").classList.add("show");$("alertHead").textContent=bad.length?"Data completeness warning":"Important notes";$("alertBody").innerHTML=issues.map(x=>`• ${esc(x)}`).join("<br>");
+}
+function renderStatuses(){
+  $("statusPanel").style.display="";const byApp=new Map();for(const s of state.statuses){const k=s.appId+"|"+(s.timezone||"UTC");if(!byApp.has(k))byApp.set(k,{name:s.appName,timezone:s.timezone||"UTC",range:s.range,items:[]});byApp.get(k).items.push(s);}$("statusGrid").innerHTML=[...byApp.values()].map(a=>`<div class="status-card"><h3>${esc(a.name)} <span class="sub">· ${esc(a.timezone)}${a.range?` · ${esc(a.range[0])} → ${esc(a.range[1])}`:""}</span></h3>${a.items.map(s=>`<div class="status-line"><span title="${esc(s.message||"")}">${esc(s.report)}${s.mode?` · ${esc(s.mode)}`:""}${s.rows!==undefined?` · ${Number(s.rows).toLocaleString()} rows`:""}${s.matched!==undefined?` · ${Number(s.matched).toLocaleString()} matched`:""}</span><span class="badge ${s.status==="ok"?"ok":s.status==="failed"||s.status==="truncated"?"fail":"warn"}">${esc(s.status)}</span></div>`).join("")}</div>`).join("");
+}
+
+/* ---------- CSV ---------- */
+const csvCell=v=>/[",\n]/.test(String(v))?'"'+String(v).replace(/"/g,'""')+'"':String(v);
+function saveCSV(lines,name){const blob=new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+$("dlBtn").onclick=()=>{
+  if(!state.lastRun)return;
+  const map=new Map();
+  for(const r of filteredRows()){
+    const source=groupKey(r),k=[r.date,r.appId,r.pid,r.prt||"",source].join("\u0001");
+    if(!map.has(k))map.set(k,{date:r.date,app:r.appName,appId:r.appId,pid:r.pid,prt:r.prt||"",source,installs:0,blocked:0,pa:0});
+    map.get(k)[r.type]+=r.n;
+  }
+  const lines=[["date","grouping","app","app_id","pid","prt","site_id","campaign","source","total_traffic","attributed_installs","clean_installs","blocked_installs","pa_installs","blocked_pct","pa_pct","total_fraud_pct","data_completeness"].join(",")];
+  const completeness=hardIssues().length?"PARTIAL":"COMPLETE";
+  for(const g of [...map.values()].sort((a,b)=>a.date.localeCompare(b.date)||(b.installs+b.blocked)-(a.installs+a.blocked))){
+    const t=g.installs+g.blocked;
+    const siteId=state.groupBy==="site"?g.source:"";const campaign=state.groupBy==="campaign"?g.source:"";
+    lines.push([g.date,state.groupBy,csvCell(g.app),csvCell(g.appId),csvCell(g.pid),csvCell(g.prt),csvCell(siteId),csvCell(campaign),csvCell(g.source),t,g.installs,Math.max(0,g.installs-g.pa),g.blocked,g.pa,fmtPct(pct(g.blocked,t)),fmtPct(pct(g.pa,t)),fmtPct(pct(g.blocked+g.pa,t)),completeness].join(","));
+  }
+  const tagParts=Object.entries(state.filters).filter(([,v])=>v).map(([k,v])=>`${k}-${String(v).replace(/[^a-z0-9]+/gi,"_")}`);
+  const filterTag=tagParts.length?`_${tagParts.join("_")}`:"_all_data";
+  saveCSV(lines,`adsphire_p360_${state.groupBy}${filterTag}_${state.lastRun.from}_${state.lastRun.to}.csv`);
+};
+$("dlReasonsBtn").onclick=()=>{if(!state.lastRun||hardIssues().length)return;const map=new Map();for(const r of filteredRows()){if(r.type==="installs")continue;const k=[r.date,groupKey(r),r.appName,r.type,r.reason||"(not reported)",r.sub||""].join("\u0001");map.set(k,(map.get(k)||0)+r.n);}const lines=[["date","grouping","source","app","type","reason","sub_reason","count"].join(",")];for(const [k,count] of [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0])||b[1]-a[1])){const [date,source,app,type,reason,sub]=k.split("\u0001");lines.push([date,state.groupBy,csvCell(source),csvCell(app),type==="blocked"?"blocked":"post_attribution",csvCell(reason),csvCell(sub),count].join(","));}saveCSV(lines,`adsphire_p360_reasons_${state.groupBy}_${state.lastRun.from}_${state.lastRun.to}.csv`);};
+</script>
+</body>
+</html>
