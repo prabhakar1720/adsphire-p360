@@ -206,7 +206,7 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
 <details class="help">
   <summary>Formulas, freshness & setup notes</summary>
   <p style="margin-top:8px"><b>Total traffic</b> = attributed installs + blocked installs. <b>Clean installs</b> = attributed installs − post-attribution installs. <b>Blocked %</b>, <b>PA %</b> and <b>Total fraud %</b> all use total traffic as denominator.<br>
-  Raw <code>installs_report</code> is used first so PRT/Site ID/Campaign breakdown stays available. If raw access fails, returns 0 rows, or no configured PID/PRT row matches, aggregate <code>partners_by_date_report</code> is automatically used for PID/App-level install volume. Aggregate fallback does not provide Site ID/Campaign install detail. Raw requests use a 1,000,000-row cap and the dashboard marks the run incomplete if the cap is reached.<br>
+  Raw <code>installs_report</code> is used first so PRT/Site ID/Campaign breakdown stays available. If raw access fails, returns 0 rows, or no configured PID/PRT row matches, aggregate <code>partners_by_date_report</code> is automatically used. PID-matched aggregate rows remain separate; when the aggregate report has valid installs but no usable PID dimension, P360 retains one app-level aggregate total and collapses blocked/PA into the same scope. Aggregate fallback does not provide reliable Site ID/Campaign/publisher-rate detail. Raw requests use a 1,000,000-row cap and the dashboard marks the run incomplete if the cap is reached.<br>
   Publisher IDs are read dynamically from <code>af_ad</code> first and <code>af_adset</code> as fallback. Any suffix after the first underscore is removed, so <code>282_132048808</code> is grouped as publisher <code>282</code>. No publisher IDs are hardcoded. Publisher fraud rates require the publisher field to be populated consistently across attributed, blocked and post-attribution rows; the publisher section shows field coverage and warns when aggregate install fallback prevents publisher-level install attribution.<br>
   Post-attribution data is updated later than real-time blocked data. Today/recent ranges are provisional and can change. Each enabled Apps Excel row is treated as a separate App + PID + optional PRT scope. Different PIDs are never merged in the default PID × App view. The orange Global Report Filters bar can filter every view by PID, PRT, Account, App, App ID, Campaign and Day. KPIs, publisher reporting and filtered CSV exports follow the same scope. API calls for the same app are fetched once internally only to save quota; calculations remain separate. Each app uses its configured Reporting Timezone. The timezone value must match that app's AppsFlyer App Settings. AppsFlyer tokens are selected server-side from the PRT ID and are never sent to the browser. The most recently uploaded Excel configuration is saved on the persistent disk and automatically loaded for all team members until it is replaced or removed.</p>
 </details>
@@ -216,6 +216,7 @@ details.help{color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:16px}
 "use strict";
 const $ = id => document.getElementById(id);
 const MAX_RAW_ROWS = 1000000;
+const AGGREGATE_APP_PID = "(aggregate app total)";
 const state = {
   config:{accounts:[],apps:[],fetchApps:[],filename:"",errors:[]},
   excelObjects:[],savedManual:[],savedExcelMeta:{saved:false,filename:"",saved_at:""},backendPrts:new Set(),csrf:"",
@@ -488,9 +489,13 @@ function matchScope(b,app){
   return app.scopes.find(s=>s.pid===b.pid && !s.prt)||null;
 }
 function applyScope(b,scope){b.scopeId=scope.scopeId;b.excelRow=scope.excelRow;b.configPrt=scope.prt;b.appName=scope.appName;return b;}
+function applyAggregateAppScope(b,app){
+  b.scopeId=`aggregate-app:${app.appId}:${app.prt||""}`;b.excelRow=null;b.configPrt=app.prt||"";b.appName=app.appName;
+  b.pid=AGGREGATE_APP_PID;b.prt=app.prt||"";b.site="";b.campaign="";b.aggregateUnscoped=true;return b;
+}
 function ingestRaw(text,app,type){
   const map=new Map();let matched=0;
-  const count=forEachCSV(text,r=>{const b=commonDims(r,app,type);const scope=matchScope(b,app);if(!scope)return;applyScope(b,scope);matched++;if(type!=="installs"){b.reason=field(r,["blocked_reason","fraud_reason","detection_reason","validation_rule","reason"])||"(not reported)";b.sub=field(r,["blocked_sub_reason","fraud_sub_reason","validation_reason_value","sub_reason"]);}const k=bucketKey(b);const old=map.get(k);old?old.n++:map.set(k,b);});
+  const count=forEachCSV(text,r=>{const b=commonDims(r,app,type);if(app.aggregateUnscoped&&type!=="installs")applyAggregateAppScope(b,app);else{const scope=matchScope(b,app);if(!scope)return;applyScope(b,scope);}matched++;if(type!=="installs"){b.reason=field(r,["blocked_reason","fraud_reason","detection_reason","validation_rule","reason"])||"(not reported)";b.sub=field(r,["blocked_sub_reason","fraud_sub_reason","validation_reason_value","sub_reason"]);}const k=bucketKey(b);const old=map.get(k);old?old.n++:map.set(k,b);});
   return {map,count,matched,truncated:count>=MAX_RAW_ROWS};
 }
 function normId(v){return String(v??"").replace(/^\uFEFF/,"").trim().toLowerCase();}
@@ -531,7 +536,7 @@ function matchAggregateScope(b,app){
   return null;
 }
 function ingestAggregate(text,app){
-  const map=new Map();let count=0,matched=0,ambiguous=0,unmatched=0;
+  const map=new Map(),appLevelCandidates=[];let count=0,matched=0,ambiguous=0,unmatched=0,appLevel=false,appLevelInstalls=0;
   const unmatchedValues=new Set();
   forEachCSV(text,r=>{
     count++;
@@ -545,6 +550,7 @@ function ingestAggregate(text,app){
     b.prt=aggregatePrt(r,app)||"";
     const scope=matchAggregateScope(b,app);
     if(!scope){
+      b.n=n;b.date=(field(r,["date","install_date","day"])||b.date).slice(0,10);appLevelCandidates.push(b);
       const samePid=app.scopes.filter(s=>normId(s.pid)===normId(b.pid));
       if(samePid.length>1)ambiguous+=n;else unmatched+=n;
       unmatchedValues.add(b.pid||"(PID column not found)");
@@ -558,11 +564,19 @@ function ingestAggregate(text,app){
     b.site="";
     const k=bucketKey(b);const old=map.get(k);old?old.n+=n:map.set(k,b);
   });
-  return{map,count,matched,ambiguous,unmatched,unmatchedValues:[...unmatchedValues].slice(0,8),truncated:false};
+  // Some AppsFlyer accounts expose aggregate install totals without a usable
+  // media-source/PID dimension. When zero configured PID rows can be matched,
+  // keep the valid aggregate total at app level instead of dropping installs.
+  if(matched===0&&appLevelCandidates.length){
+    appLevel=true;map.clear();ambiguous=0;unmatched=0;unmatchedValues.clear();
+    for(const b of appLevelCandidates){applyAggregateAppScope(b,app);matched+=b.n;appLevelInstalls+=b.n;const k=bucketKey(b);const old=map.get(k);old?old.n+=b.n:map.set(k,b);}
+  }
+  return{map,count,matched,ambiguous,unmatched,appLevel,appLevelInstalls,unmatchedValues:[...unmatchedValues].slice(0,8),truncated:false};
 }
 function reportStatus(app,report,status,detail={}){state.statuses.push({appId:app.appId,appName:app.appName,prt:app.prt||"",timezone:app.timezone,range:app.currentRange,report,status,...detail});}
 async function processApp(app,target,progress){
   app.currentRange=getRange(app.timezone||"UTC");
+  app.aggregateUnscoped=false;
 
   // Install volume strategy:
   // 1) Prefer raw installs for Site ID / Campaign / PRT detail.
@@ -590,13 +604,16 @@ async function processApp(app,target,progress){
     try{
       progress(app,"Installs aggregate fallback");
       const aggOut=ingestAggregate(await fetchReport(app,"agg","partners_by_date_report",...app.currentRange),app);
+      app.aggregateUnscoped=aggOut.appLevel;
       mergeBuckets(target,aggOut.map);
       const ambiguityNote=aggOut.ambiguous?` ${aggOut.ambiguous} install(s) could not be assigned because the same App + PID is configured under multiple PRT rows.`:"";
       const unmatchedNote=aggOut.unmatched?` ${aggOut.unmatched} install(s) did not match configured PID(s). Seen values: ${aggOut.unmatchedValues.join(", ")||"PID column not found"}.`:"";
       const fallbackStatus=aggOut.matched>0?"fallback":"failed";
       reportStatus(app,"Attributed installs",fallbackStatus,{
-        rows:aggOut.count,matched:aggOut.matched,mode:"aggregate",
-        message:`${rawInstallError.message}. Aggregate install volume matched by App + PID; Site ID/Campaign detail is unavailable.${ambiguityNote}${unmatchedNote}`
+        rows:aggOut.count,matched:aggOut.matched,mode:"aggregate",appLevel:aggOut.appLevel,
+        message:aggOut.appLevel
+          ? `${rawInstallError.message}. Aggregate installs were available without a reliable configured PID, so ${aggOut.appLevelInstalls.toLocaleString()} install(s) were retained as one app-level total. Blocked and PA rows use the same app-level scope; Site ID, Campaign and publisher-level rates are unavailable.`
+          : `${rawInstallError.message}. Aggregate install volume matched by App + PID; Site ID/Campaign detail is unavailable.${ambiguityNote}${unmatchedNote}`
       });
     }catch(aggErr){
       reportStatus(app,"Attributed installs","failed",{message:`Raw: ${rawInstallError.message}; Aggregate: ${aggErr.message}`});
@@ -638,7 +655,7 @@ function baseFilteredRows(){
   if(state.allPids.length && !state.pids.size)return [];
   if(state.allPrts.length && !state.prts.size)return [];
   return state.rows.filter(r=>{
-    const pidOk=!state.allPids.length||state.pids.has(r.pid);
+    const pidOk=r.aggregateUnscoped?state.pids.size===state.allPids.length:(!state.allPids.length||state.pids.has(r.pid));
     const prt=effectivePrt(r);
     const prtOk=!state.allPrts.length||!prt||state.prts.has(prt);
     return pidOk&&prtOk;
@@ -781,7 +798,7 @@ function renderPublisherReport(){
 }
 function renderAlerts(){
   const issues=[];const bad=hardIssues();if(bad.length)issues.push(`${bad.length} required report(s) failed or reached the row cap. Metrics may be partial; Publisher CSV is disabled.`);
-  const fallback=state.statuses.filter(s=>s.status==="fallback");if(fallback.length)issues.push(`${fallback.length} app(s) used aggregate install fallback. PRT, Site ID, Campaign and publisher-level install detail can be incomplete.`);
+  const fallback=state.statuses.filter(s=>s.status==="fallback"),appLevelFallback=fallback.filter(s=>s.appLevel);if(fallback.length)issues.push(appLevelFallback.length?`${fallback.length} app(s) used aggregate install fallback; ${appLevelFallback.length} were retained as app-level totals because PID detail was unavailable. Site ID, Campaign and publisher-level rates are unavailable for those totals.`:`${fallback.length} app(s) used aggregate install fallback. PRT, Site ID, Campaign and publisher-level install detail can be incomplete.`);
   if(state.range==="today"||state.range==="yesterday")issues.push("Recent post-attribution data is provisional and can change after the next AppsFlyer refresh.");
   const over=aggregate().filter(g=>g.pa>g.installs);if(over.length)issues.push(`${over.length} group(s) have more PA installs than attributed installs. Check date, filter and report alignment.`);
   if(!issues.length){$("alerts").classList.remove("show");return;}$("alerts").classList.add("show");$("alertHead").textContent=bad.length?"Data completeness warning":"Important notes";$("alertBody").innerHTML=issues.map(x=>`• ${esc(x)}`).join("<br>");
