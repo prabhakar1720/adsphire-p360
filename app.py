@@ -33,6 +33,7 @@ from flask import (
 
 BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard.html"
+TARGETS_FILE = BASE_DIR / "targets.html"
 EXCEL_FILE = BASE_DIR / "P360_Config_Template.xlsx"
 README_FILE = BASE_DIR / "README.md"
 
@@ -47,6 +48,8 @@ else:
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 TOKEN_FILE = DATA_DIR / "prt_tokens.json"
+DATA_ACCOUNTS_FILE = DATA_DIR / "data_accounts.json"
+TARGET_CAMPAIGNS_FILE = DATA_DIR / "target_campaigns.json"
 SAVED_APPS_FILE = DATA_DIR / "saved_apps.json"
 SAVED_EXCEL_META_FILE = DATA_DIR / "saved_excel_config.json"
 SAVED_EXCEL_WORKBOOK_FILE = DATA_DIR / "saved_excel_config.xlsx"
@@ -54,7 +57,14 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UNZIPPED_BYTES = 50 * 1024 * 1024
 MAX_ZIP_ENTRIES = 250
 AF_HOST = "https://hq1.appsflyer.com"
-RAW_REPORTS = {"installs_report", "in_app_events_report", "blocked_installs_report", "detection"}
+RAW_REPORTS = {
+    "installs_report",
+    "in_app_events_report",
+    "postbacks",
+    "in-app-events-postbacks",
+    "blocked_installs_report",
+    "detection",
+}
 AGG_REPORTS = {"partners_by_date_report"}
 ALLOWED_TIMEZONES = {"UTC", "Asia/Kolkata", "Asia/Manila", "Asia/Jakarta"}
 
@@ -70,8 +80,6 @@ app.config.update(
 
 TEAM_PASSWORD = os.getenv("TEAM_PASSWORD", "").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
-AFFISE_BASE_URL = os.getenv("AFFISE_BASE_URL", "").strip().rstrip("/")
-AFFISE_API_KEY = os.getenv("AFFISE_API_KEY", "").strip()
 
 
 def load_json(path: Path, default):
@@ -95,6 +103,117 @@ def save_json(path: Path, payload) -> None:
     finally:
         if os.path.exists(temp_name):
             os.unlink(temp_name)
+
+
+def target_accounts() -> list[dict]:
+    """Return saved data accounts plus legacy PRT mappings without exposing tokens."""
+    saved = load_json(DATA_ACCOUNTS_FILE, [])
+    if not isinstance(saved, list):
+        saved = []
+    legacy = load_json(TOKEN_FILE, {})
+    known = {(str(row.get("account_type", "")), str(row.get("identifier", ""))) for row in saved}
+    for prt, token in legacy.items():
+        if ("agency", str(prt)) in known:
+            continue
+        saved.append({
+            "id": f"legacy:{prt}",
+            "label": f"{prt} (legacy agency token)",
+            "account_type": "agency",
+            "identifier": str(prt),
+            "pids": [],
+            "token": str(token),
+            "enabled": True,
+            "legacy": True,
+        })
+    return saved
+
+
+def public_target_account(row: dict) -> dict:
+    return {
+        "id": str(row.get("id", "")),
+        "label": str(row.get("label", "")),
+        "account_type": str(row.get("account_type", "agency")),
+        "identifier": str(row.get("identifier", "")),
+        "pids": row.get("pids", []) if isinstance(row.get("pids", []), list) else [],
+        "enabled": bool(row.get("enabled", True)),
+        "legacy": bool(row.get("legacy", False)),
+        "token_configured": bool(row.get("token")),
+        "token_masked": "••••••••" + str(row.get("token", ""))[-6:] if row.get("token") else "",
+    }
+
+
+def normalize_data_account(form) -> tuple[dict | None, str | None]:
+    label = str(form.get("account_label", "")).strip()
+    account_type = str(form.get("account_type", "agency")).strip().lower()
+    identifier = str(form.get("account_identifier", "")).strip()
+    token = str(form.get("account_token", "")).strip()
+    pids = sorted({part.strip() for part in str(form.get("account_pids", "")).split(",") if part.strip()})
+    if account_type not in {"agency", "adnetwork"}:
+        return None, "Account type must be Agency or Ad Network."
+    if not label or not identifier or len(token) < 20:
+        return None, "Enter an account name, identifier and valid AppsFlyer V2 token."
+    existing = load_json(DATA_ACCOUNTS_FILE, [])
+    match = next((row for row in existing if row.get("account_type") == account_type and row.get("identifier") == identifier), None)
+    return {
+        "id": str(match.get("id") if match else uuid.uuid4()),
+        "label": label,
+        "account_type": account_type,
+        "identifier": identifier,
+        "pids": pids,
+        "token": token,
+        "enabled": bool(match.get("enabled", True)) if match else True,
+    }, None
+
+
+def normalize_target_campaign(form, accounts: list[dict]) -> tuple[dict | None, str | None]:
+    name = str(form.get("campaign_name", "")).strip()
+    app_id = str(form.get("campaign_app_id", "")).strip()
+    pid = str(form.get("campaign_pid", "")).strip()
+    credential_id = str(form.get("campaign_credential_id", "")).strip()
+    prt = str(form.get("campaign_prt", "")).strip()
+    billable_type = str(form.get("billable_type", "event")).strip().lower()
+    billable_event = str(form.get("billable_event", "")).strip()
+    count_method = str(form.get("count_method", "unique_users")).strip().lower()
+    timezone_name = str(form.get("campaign_timezone", "Asia/Kolkata")).strip() or "Asia/Kolkata"
+    try:
+        daily_target = int(str(form.get("daily_target", "0")).strip())
+    except ValueError:
+        daily_target = 0
+    if not name or not app_id or not pid:
+        return None, "Campaign name, App ID and PID are required."
+    if credential_id not in {str(row.get("id")) for row in accounts}:
+        return None, "Select a configured AppsFlyer data account."
+    if billable_type not in {"install", "event"}:
+        return None, "Billable type must be Install or In-app event."
+    if billable_type == "event" and not billable_event:
+        return None, "Billable Event Name is required for an event campaign."
+    if count_method not in {"unique_users", "event_counter"}:
+        return None, "Invalid billable counting method."
+    if daily_target < 1:
+        return None, "Daily target must be at least 1."
+    try:
+        import zoneinfo
+        zoneinfo.ZoneInfo(timezone_name)
+    except Exception:
+        return None, "Invalid IANA timezone."
+    saved = load_json(TARGET_CAMPAIGNS_FILE, [])
+    match = next((row for row in saved if str(row.get("campaign_name", "")).casefold() == name.casefold() and row.get("app_id") == app_id and row.get("pid") == pid), None)
+    return {
+        "id": str(match.get("id") if match else uuid.uuid4()),
+        "enabled": bool(match.get("enabled", True)) if match else True,
+        "campaign_name": name,
+        "offer_id": str(form.get("offer_id", "")).strip(),
+        "app_id": app_id,
+        "pid": pid,
+        "prt": prt,
+        "credential_id": credential_id,
+        "campaign_filter": str(form.get("campaign_filter", "")).strip(),
+        "billable_type": billable_type,
+        "billable_event": billable_event,
+        "count_method": count_method,
+        "daily_target": daily_target,
+        "timezone": timezone_name,
+    }, None
 
 
 
@@ -173,10 +292,12 @@ ADMIN_LOGIN_HTML = """
 
 ADMIN_HTML = """
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Adsphire P360 Admin</title>
-<style>:root{--orange:#f58220;--bg:#fff8f2;--line:#f0d2b8;--ink:#2a1d12;--dim:#765a45;--red:#e65353;--green:#10a978}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui}.wrap{max-width:980px;margin:auto;padding:28px 20px}header{display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0}h1 span{color:var(--orange)}a{color:var(--orange);font-weight:700;text-decoration:none}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;margin-top:18px;box-shadow:0 10px 25px rgba(245,130,32,.08)}.grid{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:end}@media(max-width:700px){.grid{grid-template-columns:1fr}}label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:800;margin-bottom:6px}input{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;font:inherit}button{padding:11px 16px;border:0;border-radius:9px;font-weight:800;cursor:pointer;background:var(--orange);color:#24170d}.danger{background:#fff;color:var(--red);border:1px solid #efb7b1}.row{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3e3d6}.row:last-child{border-bottom:0}.token{font-family:monospace;color:var(--green)}.msg{padding:10px;border-radius:8px;background:#fff4e9;color:var(--dim);margin-top:12px}.hint{font-size:13px;color:var(--dim);line-height:1.55}</style></head>
-<body><div class="wrap"><header><div><h1>Adsphire <span>·</span> P360 Admin</h1><div class="hint">Tokens stay on the server and are never included in the Excel file or sent to the browser.</div></div><div><a href="/">Dashboard</a> &nbsp; · &nbsp; <a href="/logout">Logout</a></div></header>
+<style>:root{--orange:#f58220;--bg:#fff8f2;--line:#f0d2b8;--ink:#2a1d12;--dim:#765a45;--red:#e65353;--green:#10a978}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui}.wrap{max-width:1180px;margin:auto;padding:28px 20px}header{display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0}h1 span{color:var(--orange)}a{color:var(--orange);font-weight:700;text-decoration:none}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;margin-top:18px;box-shadow:0 10px 25px rgba(245,130,32,.08)}.grid{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:end}.wide-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;align-items:end}.span2{grid-column:span 2}@media(max-width:900px){.wide-grid{grid-template-columns:repeat(2,minmax(150px,1fr))}}@media(max-width:700px){.grid,.wide-grid{grid-template-columns:1fr}.span2{grid-column:auto}}label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:800;margin-bottom:6px}input,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff}button{padding:11px 16px;border:0;border-radius:9px;font-weight:800;cursor:pointer;background:var(--orange);color:#24170d}.danger{background:#fff;color:var(--red);border:1px solid #efb7b1}.row{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3e3d6}.campaign-row{grid-template-columns:1.3fr 1fr .8fr 1.1fr auto}.row:last-child{border-bottom:0}.token{font-family:monospace;color:var(--green)}.msg{padding:10px;border-radius:8px;background:#fff4e9;color:var(--dim);margin-top:12px}.hint{font-size:13px;color:var(--dim);line-height:1.55}.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#fff1e5;color:#8b4b18;font-size:11px;font-weight:800;text-transform:uppercase}.badge.paused{background:#fff0ee;color:var(--red)}.actions-inline{display:flex;gap:7px}.actions-inline button{padding:8px 10px}small{color:var(--dim)}</style></head>
+<body><div class="wrap"><header><div><h1>Adsphire <span>·</span> P360 Admin</h1><div class="hint">Tokens stay on the server and are never included in the Excel file or sent to the browser.</div></div><div><a href="/">P360</a> &nbsp; · &nbsp; <a href="/targets">Target Dashboard</a> &nbsp; · &nbsp; <a href="/logout">Logout</a></div></header>
 <div class="panel"><h2>Add or update a PRT token</h2><form method="post" class="grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>PRT ID</label><input name="prt" placeholder="adsphirein749" required></div><div><label>AppsFlyer V2 API token</label><input name="token" type="password" placeholder="Paste token" required></div><button name="action" value="save">Save token</button></form>{% if message %}<div class="msg">{{ message }}</div>{% endif %}</div>
 <div class="panel"><h2>Configured PRTs</h2>{% if mappings %}{% for prt, masked in mappings %}<form method="post" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="prt" value="{{ prt }}"><strong>{{ prt }}</strong><span class="token">{{ masked }}</span><button class="danger" name="action" value="delete" onclick="return confirm('Delete this token mapping?')">Delete</button></form>{% endfor %}{% else %}<p class="hint">No PRT tokens configured yet.</p>{% endif %}</div>
+<div class="panel"><h2>AppsFlyer Data Accounts</h2><p class="hint">Add one reusable credential for each Agency or Ad Network account. Saving the same account type and identifier updates it.</p><form method="post" class="wide-grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>Account Name</label><input name="account_label" placeholder="Adsphire Ad Network" required></div><div><label>Account Type</label><select name="account_type"><option value="agency">Agency</option><option value="adnetwork">Ad Network</option></select></div><div><label>PRT / Partner ID</label><input name="account_identifier" placeholder="adsphirein749" required></div><div><label>Associated PIDs</label><input name="account_pids" placeholder="kreditgator_int, crichit67_int"></div><div class="span2"><label>AppsFlyer V2 API Token</label><input name="account_token" type="password" placeholder="Paste token" required></div><div><button name="action" value="save_data_account">Save Data Account</button></div></form>{% if account_rows %}{% for row in account_rows %}<form method="post" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="account_id" value="{{ row.id }}"><strong>{{ row.label }}<br><small>{{ row.identifier }}</small></strong><span>{{ row.pids|join(', ') or 'PIDs selected per campaign' }}</span><span><span class="badge">{{ row.account_type }}</span> <span class="token">{{ row.token_masked }}</span></span><button class="danger" name="action" value="delete_data_account" onclick="return confirm('Delete this data account?')">Delete</button></form>{% endfor %}{% endif %}</div>
+<div class="panel"><h2>Campaign Daily Targets</h2><p class="hint">The billing KPI drives achievement. Clicks and impressions use aggregate data; installs and events use raw → postback → aggregate fallback.</p><form method="post" class="wide-grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>Campaign Name</label><input name="campaign_name" required></div><div><label>Offer ID</label><input name="offer_id" placeholder="Optional"></div><div><label>App ID</label><input name="campaign_app_id" required></div><div><label>Media Source / PID</label><input name="campaign_pid" required></div><div><label>PRT</label><input name="campaign_prt" placeholder="Optional for ad network"></div><div><label>Data Account</label><select name="campaign_credential_id" required><option value="">Select account</option>{% for row in account_options %}<option value="{{ row.id }}">{{ row.label }} · {{ row.account_type }}</option>{% endfor %}</select></div><div><label>AF Campaign Filter</label><input name="campaign_filter" placeholder="Optional exact match"></div><div><label>Billing KPI</label><select name="billable_type"><option value="event">In-app event</option><option value="install">Install</option></select></div><div><label>Billable Event Name</label><input name="billable_event" placeholder="Exact case-sensitive name"></div><div><label>Event Counting</label><select name="count_method"><option value="unique_users">Unique Users</option><option value="event_counter">Event Counter</option></select></div><div><label>Daily Target</label><input name="daily_target" type="number" min="1" required></div><div><label>Reporting Timezone</label><input name="campaign_timezone" value="Asia/Kolkata" required></div><div><button name="action" value="save_target_campaign">Save Campaign Target</button></div></form>{% if campaign_rows %}{% for row in campaign_rows %}<form method="post" class="row campaign-row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="campaign_id" value="{{ row.id }}"><strong>{{ row.campaign_name }}<br><small>{{ row.app_id }}</small></strong><span>{{ row.pid }}{% if row.prt %} · {{ row.prt }}{% endif %}</span><span>Target: <b>{{ row.daily_target }}</b></span><span>{{ row.billable_event or 'Installs' }}<br><span class="badge{% if not row.get('enabled', True) %} paused{% endif %}">{{ 'Enabled' if row.get('enabled', True) else 'Paused' }}</span></span><div class="actions-inline"><button name="action" value="toggle_target_campaign">{{ 'Pause' if row.get('enabled', True) else 'Enable' }}</button><button class="danger" name="action" value="delete_target_campaign" onclick="return confirm('Delete this campaign target?')">Delete</button></div></form>{% endfor %}{% endif %}</div>
 <div class="panel"><h2>Storage status</h2><p class="hint">Data directory: <code>{{ data_dir }}</code><br>For Render, attach a persistent disk at <code>/data</code>. Without a disk, admin changes can be lost after a restart or redeploy.</p></div></div></body></html>
 """
 
@@ -248,9 +369,49 @@ def admin():
         if not valid_csrf(request.form.get("csrf")):
             message = "Session expired. Reload and retry."
         else:
-            prt = request.form.get("prt", "").strip()
             action = request.form.get("action", "save")
-            if action == "delete":
+            prt = request.form.get("prt", "").strip()
+            if action == "save_data_account":
+                row, error = normalize_data_account(request.form)
+                if error:
+                    message = error
+                else:
+                    rows = load_json(DATA_ACCOUNTS_FILE, [])
+                    rows = [item for item in rows if item.get("id") != row["id"]]
+                    rows.append(row)
+                    save_json(DATA_ACCOUNTS_FILE, rows)
+                    message = f"Saved {row['label']} data account."
+            elif action == "delete_data_account":
+                account_id = request.form.get("account_id", "").strip()
+                rows = [item for item in load_json(DATA_ACCOUNTS_FILE, []) if item.get("id") != account_id]
+                save_json(DATA_ACCOUNTS_FILE, rows)
+                message = "Deleted data account."
+            elif action == "save_target_campaign":
+                row, error = normalize_target_campaign(request.form, target_accounts())
+                if error:
+                    message = error
+                else:
+                    rows = load_json(TARGET_CAMPAIGNS_FILE, [])
+                    rows = [item for item in rows if item.get("id") != row["id"]]
+                    rows.append(row)
+                    save_json(TARGET_CAMPAIGNS_FILE, rows)
+                    message = f"Saved daily target for {row['campaign_name']}."
+            elif action == "delete_target_campaign":
+                campaign_id = request.form.get("campaign_id", "").strip()
+                rows = [item for item in load_json(TARGET_CAMPAIGNS_FILE, []) if item.get("id") != campaign_id]
+                save_json(TARGET_CAMPAIGNS_FILE, rows)
+                message = "Deleted campaign target."
+            elif action == "toggle_target_campaign":
+                campaign_id = request.form.get("campaign_id", "").strip()
+                rows = load_json(TARGET_CAMPAIGNS_FILE, [])
+                changed = next((item for item in rows if item.get("id") == campaign_id), None)
+                if changed:
+                    changed["enabled"] = not bool(changed.get("enabled", True))
+                    save_json(TARGET_CAMPAIGNS_FILE, rows)
+                    message = f"{'Enabled' if changed['enabled'] else 'Paused'} {changed.get('campaign_name', 'campaign')}."
+                else:
+                    message = "Campaign target was not found."
+            elif action == "delete":
                 mappings.pop(prt, None)
                 save_json(TOKEN_FILE, mappings)
                 message = f"Deleted token mapping for {prt}."
@@ -262,14 +423,48 @@ def admin():
                     mappings[prt] = token
                     save_json(TOKEN_FILE, mappings)
                     message = f"Saved token mapping for {prt}."
+    mappings = load_json(TOKEN_FILE, {})
     masked = [(prt, "••••••••" + token[-6:]) for prt, token in sorted(mappings.items())]
-    return render_template_string(ADMIN_HTML, mappings=masked, message=message, csrf=csrf_token(), data_dir=str(DATA_DIR))
+    stored_accounts = load_json(DATA_ACCOUNTS_FILE, [])
+    account_rows = [public_target_account(row) for row in stored_accounts]
+    account_options = [public_target_account(row) for row in target_accounts() if row.get("enabled", True)]
+    campaign_rows = load_json(TARGET_CAMPAIGNS_FILE, [])
+    return render_template_string(
+        ADMIN_HTML,
+        mappings=masked,
+        account_rows=account_rows,
+        account_options=account_options,
+        campaign_rows=campaign_rows,
+        message=message,
+        csrf=csrf_token(),
+        data_dir=str(DATA_DIR),
+    )
 
 
 @app.route("/")
 @login_required
 def dashboard():
     return send_file(DASHBOARD_FILE, mimetype="text/html")
+
+
+@app.route("/targets")
+@login_required
+def targets_dashboard():
+    return send_file(TARGETS_FILE, mimetype="text/html")
+
+
+@app.route("/api/target-config")
+@login_required
+def target_config():
+    accounts = []
+    for row in target_accounts():
+        if not row.get("enabled", True):
+            continue
+        public = public_target_account(row)
+        public.pop("token_masked", None)
+        accounts.append(public)
+    campaigns = [row for row in load_json(TARGET_CAMPAIGNS_FILE, []) if row.get("enabled", True)]
+    return jsonify({"accounts": accounts, "campaigns": campaigns})
 
 
 @app.route("/P360_Config_Template.xlsx")
@@ -303,23 +498,12 @@ def validate_saved_app(payload: dict) -> tuple[dict | None, str | None]:
     prt = str(payload.get("prt", "")).strip()
     timezone = str(payload.get("timezone", "UTC")).strip() or "UTC"
     notes = str(payload.get("notes", "")).strip()
-    billable_event_name = str(payload.get("billable_event_name", "")).strip()
-    affise_offer_ids_raw = str(payload.get("affise_offer_ids", "")).strip()
-    affise_offer_ids = [item.strip() for item in re.split(r"[,;\n]+", affise_offer_ids_raw) if item.strip()]
     if not app_id or any(ch in app_id for ch in "/\\"):
         return None, "A valid App ID is required."
     if not pid:
         return None, "Media Source / PID is required."
     if not prt:
         return None, "PRT ID is required because the server selects the token by PRT."
-    if billable_event_name and (
-        len(billable_event_name) > 100
-        or billable_event_name[0] in {'"', "=", "+", "-"}
-        or any(ch in "\r\n\t" or ord(ch) < 32 for ch in billable_event_name)
-    ):
-        return None, "Billable Event Name must be one exact AppsFlyer event name without control characters."
-    if len(affise_offer_ids) > 100 or any(not re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", item) for item in affise_offer_ids):
-        return None, "Enter up to 100 valid Affise Offer IDs separated by commas."
     try:
         import zoneinfo
         zoneinfo.ZoneInfo(timezone)
@@ -333,8 +517,6 @@ def validate_saved_app(payload: dict) -> tuple[dict | None, str | None]:
         "pid": pid,
         "prt": prt,
         "timezone": timezone,
-        "billable_event_name": billable_event_name,
-        "affise_offer_ids": ", ".join(dict.fromkeys(affise_offer_ids)),
         "notes": notes,
     }, None
 
@@ -563,13 +745,23 @@ def appsflyer_proxy(kind: str, app_id: str, report: str):
     if not app_id or any(ch in app_id for ch in "/\\"):
         return jsonify({"error": "Invalid App ID"}), 400
 
+    credential_id = request.headers.get("X-AF-Credential-ID", "").strip()
     prt = request.headers.get("X-P360-PRT", "").strip()
-    mappings = load_json(TOKEN_FILE, {})
-    token = mappings.get(prt, "")
-    if not prt:
-        return jsonify({"error": "PRT ID is required for server-side token selection."}), 422
+    token = ""
+    credential_label = prt
+    if credential_id:
+        account = next((row for row in target_accounts() if str(row.get("id")) == credential_id), None)
+        if not account:
+            return jsonify({"error": "The selected AppsFlyer data account no longer exists."}), 422
+        token = str(account.get("token", ""))
+        credential_label = str(account.get("label") or account.get("identifier") or credential_id)
+    else:
+        mappings = load_json(TOKEN_FILE, {})
+        token = mappings.get(prt, "")
+        if not prt:
+            return jsonify({"error": "PRT ID or AppsFlyer credential ID is required for server-side token selection."}), 422
     if not token:
-        return jsonify({"error": f"No AppsFlyer token is configured for PRT {prt}. Ask the admin to add it."}), 422
+        return jsonify({"error": f"No AppsFlyer token is configured for {credential_label}. Ask the admin to add it."}), 422
 
     route = f"/api/{kind}/export/app/{urllib.parse.quote(app_id, safe='')}/{report}/v5"
     target = AF_HOST + route
@@ -589,52 +781,6 @@ def appsflyer_proxy(kind: str, app_id: str, report: str):
         return app.response_class(data, status=exc.code, content_type=exc.headers.get("Content-Type", "text/plain; charset=utf-8"))
     except Exception as exc:
         return jsonify({"error": f"AppsFlyer proxy error: {exc}"}), 502
-
-
-@app.route("/api/affise/clicks")
-@login_required
-def affise_clicks():
-    """Return Affise custom click statistics for mapped offers, sliced by day."""
-    if not AFFISE_BASE_URL or not AFFISE_API_KEY:
-        return jsonify({"error": "Affise is not configured. Add AFFISE_BASE_URL and AFFISE_API_KEY in Render."}), 422
-
-    offer_ids = [item.strip() for item in re.split(r"[,;\n]+", request.args.get("offer_ids", "")) if item.strip()]
-    date_from = request.args.get("from", "").strip()
-    date_to = request.args.get("to", "").strip()
-    if not offer_ids or len(offer_ids) > 100 or any(not re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", item) for item in offer_ids):
-        return jsonify({"error": "Enter up to 100 valid Affise Offer IDs."}), 400
-    try:
-        from_day = datetime.strptime(date_from, "%Y-%m-%d").date()
-        to_day = datetime.strptime(date_to, "%Y-%m-%d").date()
-    except ValueError:
-        return jsonify({"error": "Affise dates must use YYYY-MM-DD."}), 400
-    if from_day > to_day:
-        return jsonify({"error": "The Affise start date cannot be later than the end date."}), 400
-    if (to_day - from_day).days > 366:
-        return jsonify({"error": "Affise click comparisons are limited to 367 days per request."}), 400
-
-    query_items = [
-        ("filter[date_from]", date_from),
-        ("filter[date_to]", date_to),
-        ("slice[]", "day"),
-        ("order[]", "day"),
-    ]
-    query_items.extend(("filter[offer][]", offer_id) for offer_id in dict.fromkeys(offer_ids))
-    query = urllib.parse.urlencode(query_items)
-    target = f"{AFFISE_BASE_URL}/3.0/stats/custom?{query}"
-    outbound = urllib.request.Request(target, method="GET")
-    outbound.add_header("API-Key", AFFISE_API_KEY)
-    outbound.add_header("Accept", "application/json")
-    outbound.add_header("User-Agent", "Adsphire-P360-Hosted/1.0")
-    try:
-        with urllib.request.urlopen(outbound, timeout=120) as response:
-            data = response.read()
-            return app.response_class(data, status=response.status, content_type="application/json; charset=utf-8")
-    except urllib.error.HTTPError as exc:
-        data = exc.read()
-        return app.response_class(data, status=exc.code, content_type=exc.headers.get("Content-Type", "application/json; charset=utf-8"))
-    except Exception as exc:
-        return jsonify({"error": f"Affise proxy error: {exc}"}), 502
 
 
 if __name__ == "__main__":
