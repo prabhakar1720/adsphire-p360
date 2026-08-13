@@ -179,8 +179,8 @@ def normalize_target_campaign(form, accounts: list[dict]) -> tuple[dict | None, 
         daily_target = int(str(form.get("daily_target", "0")).strip())
     except ValueError:
         daily_target = 0
-    if not name or not app_id or not pid:
-        return None, "Campaign name, App ID and PID are required."
+    if not name or not app_id:
+        return None, "Campaign name and App ID are required. Leave PID blank to track all PIDs for the app."
     if credential_id not in {str(row.get("id")) for row in accounts}:
         return None, "Select a configured AppsFlyer data account."
     if billable_type not in {"install", "event"}:
@@ -300,6 +300,13 @@ ADMIN_HTML = """
 <div class="panel"><h2>Campaign Daily Targets</h2><p class="hint">The billing KPI drives achievement. Clicks and impressions use aggregate data; installs and events use raw → postback → aggregate fallback.</p><form method="post" class="wide-grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>Campaign Name</label><input name="campaign_name" required></div><div><label>Offer ID</label><input name="offer_id" placeholder="Optional"></div><div><label>App ID</label><input name="campaign_app_id" required></div><div><label>Media Source / PID</label><input name="campaign_pid" required></div><div><label>PRT</label><input name="campaign_prt" placeholder="Optional for ad network"></div><div><label>Data Account</label><select name="campaign_credential_id" required><option value="">Select account</option>{% for row in account_options %}<option value="{{ row.id }}">{{ row.label }} · {{ row.account_type }}</option>{% endfor %}</select></div><div><label>AF Campaign Filter</label><input name="campaign_filter" placeholder="Optional exact match"></div><div><label>Billing KPI</label><select name="billable_type"><option value="event">In-app event</option><option value="install">Install</option></select></div><div><label>Billable Event Name</label><input name="billable_event" placeholder="Exact case-sensitive name"></div><div><label>Event Counting</label><select name="count_method"><option value="unique_users">Unique Users</option><option value="event_counter">Event Counter</option></select></div><div><label>Daily Target</label><input name="daily_target" type="number" min="1" required></div><div><label>Reporting Timezone</label><input name="campaign_timezone" value="Asia/Kolkata" required></div><div><button name="action" value="save_target_campaign">Save Campaign Target</button></div></form>{% if campaign_rows %}{% for row in campaign_rows %}<form method="post" class="row campaign-row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="campaign_id" value="{{ row.id }}"><strong>{{ row.campaign_name }}<br><small>{{ row.app_id }}</small></strong><span>{{ row.pid }}{% if row.prt %} · {{ row.prt }}{% endif %}</span><span>Target: <b>{{ row.daily_target }}</b></span><span>{{ row.billable_event or 'Installs' }}<br><span class="badge{% if not row.get('enabled', True) %} paused{% endif %}">{{ 'Enabled' if row.get('enabled', True) else 'Paused' }}</span></span><div class="actions-inline"><button name="action" value="toggle_target_campaign">{{ 'Pause' if row.get('enabled', True) else 'Enable' }}</button><button class="danger" name="action" value="delete_target_campaign" onclick="return confirm('Delete this campaign target?')">Delete</button></div></form>{% endfor %}{% endif %}</div>
 <div class="panel"><h2>Storage status</h2><p class="hint">Data directory: <code>{{ data_dir }}</code><br>For Render, attach a persistent disk at <code>/data</code>. Without a disk, admin changes can be lost after a restart or redeploy.</p></div></div></body></html>
 """
+ADMIN_HTML = ADMIN_HTML.replace(
+    '<label>Media Source / PID</label><input name="campaign_pid" required>',
+    '<label>Media Source / PID (optional)</label><input name="campaign_pid" placeholder="Leave blank for all PIDs / app total">',
+).replace(
+    "{{ row.pid }}{% if row.prt %}",
+    "{{ row.pid or 'All PIDs' }}{% if row.prt %}",
+)
 
 
 @app.after_request
