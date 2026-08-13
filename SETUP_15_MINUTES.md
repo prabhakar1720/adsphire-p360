@@ -8,6 +8,7 @@
 - Your shared team password
 - A separate admin password
 - AppsFlyer V2 tokens for each PRT
+- Your Affise API base URL and API key
 
 ## 1. Create a private GitHub repository — 2 minutes
 
@@ -40,6 +41,11 @@ The Blueprint creates:
 - One 1 GB persistent disk mounted at `/data`
 - A generated Flask `SECRET_KEY`
 
+In the Render service's **Environment** page, also set:
+
+- `AFFISE_BASE_URL`, for example `https://offers-saltoro.affise.com`
+- `AFFISE_API_KEY`, using a key that can read Affise custom statistics
+
 ## 3. Add AppsFlyer tokens — 3 minutes
 
 1. Open the Render URL.
@@ -68,20 +74,24 @@ If several PRT IDs use the same token, save the token separately against each PR
    - Media Source / PID
    - Reporting Timezone
    - Notes
+   - Affise Offer IDs (optional, comma-separated)
+   - Billable Event Name (optional, exact and case-sensitive)
 3. Upload the Excel file.
 
 ### Manual method
 
-Use **Add an App Row Manually**. These rows are saved on the server and shared with all logged-in users.
+Use **Add an App Row Manually**. These rows are saved on the server and shared with all logged-in users. For an existing row, open **Manage Saved Apps → Edit** to add or change its Billable Event Name.
 
 ## 5. Test — 2 minutes
 
 1. Select **Yesterday** first because post-attribution data for Today can still change.
 2. Click **Run Summary**.
 3. Search one app you know, such as Upstox.
-4. Confirm attributed installs, blocked installs and fraud rate.
+4. Confirm impressions, attributed installs, billable events, blocked installs and fraud rate.
 5. Test Site ID view with the App and PID drill-down filters.
 6. Download Current View CSV.
+7. To test click comparison, select one app with Affise Offer IDs mapped and confirm the Affise vs AppsFlyer section appears.
+8. For an app with a Billable Event Name, confirm the Billable Events KPI matches the accepted AppsFlyer in-app-event report. Blocked in-app events are intentionally excluded.
 
 ## URLs
 

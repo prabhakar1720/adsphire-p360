@@ -54,7 +54,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UNZIPPED_BYTES = 50 * 1024 * 1024
 MAX_ZIP_ENTRIES = 250
 AF_HOST = "https://hq1.appsflyer.com"
-RAW_REPORTS = {"installs_report", "blocked_installs_report", "detection"}
+RAW_REPORTS = {"installs_report", "in_app_events_report", "blocked_installs_report", "detection"}
 AGG_REPORTS = {"partners_by_date_report"}
 ALLOWED_TIMEZONES = {"UTC", "Asia/Kolkata", "Asia/Manila", "Asia/Jakarta"}
 
@@ -70,6 +70,8 @@ app.config.update(
 
 TEAM_PASSWORD = os.getenv("TEAM_PASSWORD", "").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
+AFFISE_BASE_URL = os.getenv("AFFISE_BASE_URL", "").strip().rstrip("/")
+AFFISE_API_KEY = os.getenv("AFFISE_API_KEY", "").strip()
 
 
 def load_json(path: Path, default):
@@ -301,12 +303,23 @@ def validate_saved_app(payload: dict) -> tuple[dict | None, str | None]:
     prt = str(payload.get("prt", "")).strip()
     timezone = str(payload.get("timezone", "UTC")).strip() or "UTC"
     notes = str(payload.get("notes", "")).strip()
+    billable_event_name = str(payload.get("billable_event_name", "")).strip()
+    affise_offer_ids_raw = str(payload.get("affise_offer_ids", "")).strip()
+    affise_offer_ids = [item.strip() for item in re.split(r"[,;\n]+", affise_offer_ids_raw) if item.strip()]
     if not app_id or any(ch in app_id for ch in "/\\"):
         return None, "A valid App ID is required."
     if not pid:
         return None, "Media Source / PID is required."
     if not prt:
         return None, "PRT ID is required because the server selects the token by PRT."
+    if billable_event_name and (
+        len(billable_event_name) > 100
+        or billable_event_name[0] in {'"', "=", "+", "-"}
+        or any(ch in "\r\n\t" or ord(ch) < 32 for ch in billable_event_name)
+    ):
+        return None, "Billable Event Name must be one exact AppsFlyer event name without control characters."
+    if len(affise_offer_ids) > 100 or any(not re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", item) for item in affise_offer_ids):
+        return None, "Enter up to 100 valid Affise Offer IDs separated by commas."
     try:
         import zoneinfo
         zoneinfo.ZoneInfo(timezone)
@@ -320,6 +333,8 @@ def validate_saved_app(payload: dict) -> tuple[dict | None, str | None]:
         "pid": pid,
         "prt": prt,
         "timezone": timezone,
+        "billable_event_name": billable_event_name,
+        "affise_offer_ids": ", ".join(dict.fromkeys(affise_offer_ids)),
         "notes": notes,
     }, None
 
@@ -574,6 +589,52 @@ def appsflyer_proxy(kind: str, app_id: str, report: str):
         return app.response_class(data, status=exc.code, content_type=exc.headers.get("Content-Type", "text/plain; charset=utf-8"))
     except Exception as exc:
         return jsonify({"error": f"AppsFlyer proxy error: {exc}"}), 502
+
+
+@app.route("/api/affise/clicks")
+@login_required
+def affise_clicks():
+    """Return Affise custom click statistics for mapped offers, sliced by day."""
+    if not AFFISE_BASE_URL or not AFFISE_API_KEY:
+        return jsonify({"error": "Affise is not configured. Add AFFISE_BASE_URL and AFFISE_API_KEY in Render."}), 422
+
+    offer_ids = [item.strip() for item in re.split(r"[,;\n]+", request.args.get("offer_ids", "")) if item.strip()]
+    date_from = request.args.get("from", "").strip()
+    date_to = request.args.get("to", "").strip()
+    if not offer_ids or len(offer_ids) > 100 or any(not re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", item) for item in offer_ids):
+        return jsonify({"error": "Enter up to 100 valid Affise Offer IDs."}), 400
+    try:
+        from_day = datetime.strptime(date_from, "%Y-%m-%d").date()
+        to_day = datetime.strptime(date_to, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Affise dates must use YYYY-MM-DD."}), 400
+    if from_day > to_day:
+        return jsonify({"error": "The Affise start date cannot be later than the end date."}), 400
+    if (to_day - from_day).days > 366:
+        return jsonify({"error": "Affise click comparisons are limited to 367 days per request."}), 400
+
+    query_items = [
+        ("filter[date_from]", date_from),
+        ("filter[date_to]", date_to),
+        ("slice[]", "day"),
+        ("order[]", "day"),
+    ]
+    query_items.extend(("filter[offer][]", offer_id) for offer_id in dict.fromkeys(offer_ids))
+    query = urllib.parse.urlencode(query_items)
+    target = f"{AFFISE_BASE_URL}/3.0/stats/custom?{query}"
+    outbound = urllib.request.Request(target, method="GET")
+    outbound.add_header("API-Key", AFFISE_API_KEY)
+    outbound.add_header("Accept", "application/json")
+    outbound.add_header("User-Agent", "Adsphire-P360-Hosted/1.0")
+    try:
+        with urllib.request.urlopen(outbound, timeout=120) as response:
+            data = response.read()
+            return app.response_class(data, status=response.status, content_type="application/json; charset=utf-8")
+    except urllib.error.HTTPError as exc:
+        data = exc.read()
+        return app.response_class(data, status=exc.code, content_type=exc.headers.get("Content-Type", "application/json; charset=utf-8"))
+    except Exception as exc:
+        return jsonify({"error": f"Affise proxy error: {exc}"}), 502
 
 
 if __name__ == "__main__":
