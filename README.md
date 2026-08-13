@@ -19,6 +19,7 @@ A private team version of the P360 dashboard.
 - Fallback happens when report access is unavailable. A successful report containing zero matching rows remains a valid zero result.
 - Blocked-event postback reports are never requested, and fraud/blocked rows are excluded if a source returns such fields.
 - The new daily tracker has Overall, Day-wise and PID-level views and intentionally excludes Site ID. The existing P360 fraud dashboard keeps its original Site ID view and remains restricted to the PIDs in its own saved P360 configuration.
+- The daily tracker uses the orange-and-white P360 visual style and provides global PID, PRT, account, app, App ID, campaign, day and status filters. Filters apply to KPI cards, the table and CSV export.
 
 ## Environment variables
 
