@@ -20,6 +20,8 @@ A private team version of the P360 dashboard.
 - Blocked-event postback reports are never requested, and fraud/blocked rows are excluded if a source returns such fields.
 - The new daily tracker has Overall, Day-wise and PID-level views and intentionally excludes Site ID. The existing P360 fraud dashboard keeps its original Site ID view and remains restricted to the PIDs in its own saved P360 configuration.
 - The daily tracker uses the orange-and-white P360 visual style and provides global PID, PRT, account, app, App ID, campaign, day and status filters. Filters apply to KPI cards, the table and CSV export.
+- AppsFlyer responses are cached centrally under `/data/af_report_cache`: aggregate data for 1 hour on current-day ranges and 24 hours for past ranges; raw/postback data for 15 minutes on current-day ranges and 6 hours for past ranges. Page reloads and filters reuse this shared cache, automatic refresh is disabled, and stale saved data is used if AppsFlyer responds with a rate-limit/server error.
+- Opening or reloading `/targets` makes no AppsFlyer report calls. Reports load only when a user clicks **Refresh Performance**; changing filters, breakdown tabs and exporting CSV uses the already-loaded browser data.
 
 ## Environment variables
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 import hmac
 import io
 import json
@@ -10,6 +11,7 @@ import posixpath
 import re
 import secrets
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -50,6 +52,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 TOKEN_FILE = DATA_DIR / "prt_tokens.json"
 DATA_ACCOUNTS_FILE = DATA_DIR / "data_accounts.json"
 TARGET_CAMPAIGNS_FILE = DATA_DIR / "target_campaigns.json"
+REPORT_CACHE_DIR = DATA_DIR / "af_report_cache"
 SAVED_APPS_FILE = DATA_DIR / "saved_apps.json"
 SAVED_EXCEL_META_FILE = DATA_DIR / "saved_excel_config.json"
 SAVED_EXCEL_WORKBOOK_FILE = DATA_DIR / "saved_excel_config.xlsx"
@@ -80,6 +83,9 @@ app.config.update(
 
 TEAM_PASSWORD = os.getenv("TEAM_PASSWORD", "").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
+REPORT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+_report_cache_locks: dict[str, threading.Lock] = {}
+_report_cache_locks_guard = threading.Lock()
 
 
 def load_json(path: Path, default):
@@ -103,6 +109,36 @@ def save_json(path: Path, payload) -> None:
     finally:
         if os.path.exists(temp_name):
             os.unlink(temp_name)
+
+
+def report_cache_ttl(kind: str, query: dict[str, list[str]]) -> int:
+    """Keep AppsFlyer calls bounded while current-day data remains reasonably fresh."""
+    today_utc = datetime.now(timezone.utc).date().isoformat()
+    includes_today = query.get("to", [""])[0] >= today_utc
+    if kind == "agg-data":
+        return 60 * 60 if includes_today else 24 * 60 * 60
+    return 15 * 60 if includes_today else 6 * 60 * 60
+
+
+def report_cache_paths(token: str, target: str) -> tuple[Path, Path, str]:
+    digest = hashlib.sha256((token + "\0" + target).encode("utf-8")).hexdigest()
+    return REPORT_CACHE_DIR / f"{digest}.csv", REPORT_CACHE_DIR / f"{digest}.json", digest
+
+
+def cached_report_response(data_path: Path, meta_path: Path, cache_status: str):
+    meta = load_json(meta_path, {})
+    try:
+        data = data_path.read_bytes()
+    except OSError:
+        return None
+    response = app.response_class(
+        data,
+        status=200,
+        content_type=meta.get("content_type", "text/csv; charset=utf-8"),
+    )
+    response.headers["X-AF-Cache"] = cache_status
+    response.headers["X-AF-Cached-At"] = str(meta.get("fetched_at", ""))
+    return response
 
 
 def target_accounts() -> list[dict]:
@@ -775,19 +811,63 @@ def appsflyer_proxy(kind: str, app_id: str, report: str):
     query = request.query_string.decode("utf-8", errors="ignore")
     if query:
         target += "?" + query
-    outbound = urllib.request.Request(target, method="GET")
-    outbound.add_header("Authorization", "Bearer " + token)
-    outbound.add_header("Accept", "text/csv")
-    outbound.add_header("User-Agent", "Adsphire-P360-Hosted/1.0")
-    try:
-        with urllib.request.urlopen(outbound, timeout=300) as response:
-            data = response.read()
-            return app.response_class(data, status=response.status, content_type=response.headers.get("Content-Type", "text/csv; charset=utf-8"))
-    except urllib.error.HTTPError as exc:
-        data = exc.read()
-        return app.response_class(data, status=exc.code, content_type=exc.headers.get("Content-Type", "text/plain; charset=utf-8"))
-    except Exception as exc:
-        return jsonify({"error": f"AppsFlyer proxy error: {exc}"}), 502
+    data_path, meta_path, cache_key = report_cache_paths(token, target)
+    ttl = report_cache_ttl(kind, urllib.parse.parse_qs(query, keep_blank_values=True))
+    meta = load_json(meta_path, {})
+    age = datetime.now(timezone.utc).timestamp() - float(meta.get("fetched_at_epoch", 0))
+    if data_path.exists() and meta_path.exists() and age < ttl:
+        cached = cached_report_response(data_path, meta_path, "HIT")
+        if cached is not None:
+            return cached
+
+    with _report_cache_locks_guard:
+        cache_lock = _report_cache_locks.setdefault(cache_key, threading.Lock())
+    with cache_lock:
+        # Another request may have populated this key while this request waited.
+        meta = load_json(meta_path, {})
+        age = datetime.now(timezone.utc).timestamp() - float(meta.get("fetched_at_epoch", 0))
+        if data_path.exists() and meta_path.exists() and age < ttl:
+            cached = cached_report_response(data_path, meta_path, "HIT")
+            if cached is not None:
+                return cached
+
+        outbound = urllib.request.Request(target, method="GET")
+        outbound.add_header("Authorization", "Bearer " + token)
+        outbound.add_header("Accept", "text/csv")
+        outbound.add_header("User-Agent", "Adsphire-P360-Hosted/1.0")
+        try:
+            with urllib.request.urlopen(outbound, timeout=300) as response:
+                data = response.read()
+                content_type = response.headers.get("Content-Type", "text/csv; charset=utf-8")
+                if 200 <= response.status < 300:
+                    fetched = datetime.now(timezone.utc)
+                    save_bytes(data_path, data)
+                    save_json(meta_path, {
+                        "fetched_at": fetched.isoformat(),
+                        "fetched_at_epoch": fetched.timestamp(),
+                        "content_type": content_type,
+                        "kind": kind,
+                        "report": report,
+                    })
+                result = app.response_class(data, status=response.status, content_type=content_type)
+                result.headers["X-AF-Cache"] = "MISS"
+                return result
+        except urllib.error.HTTPError as exc:
+            # Preserve dashboard availability when AppsFlyer rate-limits a report.
+            if data_path.exists() and meta_path.exists() and exc.code in {403, 429, 500, 502, 503, 504}:
+                cached = cached_report_response(data_path, meta_path, "STALE")
+                if cached is not None:
+                    cached.headers["Warning"] = f'110 - "AppsFlyer returned {exc.code}; serving saved data"'
+                    return cached
+            data = exc.read()
+            return app.response_class(data, status=exc.code, content_type=exc.headers.get("Content-Type", "text/plain; charset=utf-8"))
+        except Exception as exc:
+            if data_path.exists() and meta_path.exists():
+                cached = cached_report_response(data_path, meta_path, "STALE")
+                if cached is not None:
+                    cached.headers["Warning"] = '110 - "AppsFlyer unavailable; serving saved data"'
+                    return cached
+            return jsonify({"error": f"AppsFlyer proxy error: {exc}"}), 502
 
 
 if __name__ == "__main__":
