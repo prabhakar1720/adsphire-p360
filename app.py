@@ -37,6 +37,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard.html"
 TARGETS_FILE = BASE_DIR / "targets.html"
 EXCEL_FILE = BASE_DIR / "P360_Config_Template.xlsx"
+TARGET_TEMPLATE_FILE = BASE_DIR / "Campaign_Target_Upload_Template.xlsx"
 README_FILE = BASE_DIR / "README.md"
 
 # Render persistent disk should be mounted at /data. Local runs use ./data.
@@ -233,7 +234,7 @@ def normalize_target_campaign(form, accounts: list[dict]) -> tuple[dict | None, 
     except Exception:
         return None, "Invalid IANA timezone."
     saved = load_json(TARGET_CAMPAIGNS_FILE, [])
-    match = next((row for row in saved if str(row.get("campaign_name", "")).casefold() == name.casefold() and row.get("app_id") == app_id and row.get("pid") == pid), None)
+    match = next((row for row in saved if str(row.get("campaign_name", "")).casefold() == name.casefold() and row.get("app_id") == app_id and row.get("pid") == pid and str(row.get("credential_id", "")) == credential_id), None)
     return {
         "id": str(match.get("id") if match else uuid.uuid4()),
         "enabled": bool(match.get("enabled", True)) if match else True,
@@ -250,6 +251,125 @@ def normalize_target_campaign(form, accounts: list[dict]) -> tuple[dict | None, 
         "daily_target": daily_target,
         "timezone": timezone_name,
     }, None
+
+
+def normalized_header(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def resolve_target_account(value: object, accounts: list[dict]) -> tuple[str | None, str | None]:
+    wanted = str(value or "").strip().casefold()
+    matches = [row for row in accounts if wanted and wanted in {
+        str(row.get("id", "")).casefold(),
+        str(row.get("label", "")).casefold(),
+        str(row.get("identifier", "")).casefold(),
+    }]
+    if not matches:
+        return None, f"Data Account '{value}' was not found. Use the exact Account Name or PRT / Partner ID from Admin."
+    if len(matches) > 1:
+        return None, f"Data Account '{value}' is ambiguous. Use its exact PRT / Partner ID."
+    return str(matches[0].get("id", "")), None
+
+
+def import_target_workbook(data: bytes, accounts: list[dict]) -> tuple[dict | None, list[str]]:
+    try:
+        sheets = parse_xlsx(data)
+    except ValueError as exc:
+        return None, [str(exc)]
+    sheet_name = next((name for name in sheets if name.strip().casefold() == "targets"), next(iter(sheets)))
+    rows = sheets.get(sheet_name, [])
+    if not rows:
+        return None, ["The Targets sheet is empty."]
+    headers = {normalized_header(value): index for index, value in enumerate(rows[0]) if str(value).strip()}
+    aliases = {
+        "campaign_name": ["campaign_name", "campaign"],
+        "offer_id": ["offer_id"],
+        "app_id": ["app_id"],
+        "pid": ["media_source_pid_optional", "media_source_pid", "pid", "media_source"],
+        "prt": ["prt_optional", "prt"],
+        "account": ["data_account_identifier", "data_account", "account_name", "account"],
+        "campaign_filter": ["af_campaign_filter_optional", "af_campaign_filter", "campaign_filter"],
+        "billable_type": ["billing_kpi", "billable_type"],
+        "billable_event": ["billable_event_name", "billable_event"],
+        "count_method": ["event_counting", "count_method"],
+        "daily_target": ["daily_target"],
+        "timezone": ["reporting_timezone", "timezone"],
+        "enabled": ["enabled_yes_no", "enabled"],
+    }
+
+    def column(field: str) -> int | None:
+        return next((headers[name] for name in aliases[field] if name in headers), None)
+
+    missing = [label for field, label in (("campaign_name", "Campaign Name"), ("app_id", "App ID"), ("account", "Data Account Identifier"), ("billable_type", "Billing KPI"), ("daily_target", "Daily Target")) if column(field) is None]
+    if missing:
+        return None, ["Missing required column(s): " + ", ".join(missing) + ". Download and use the latest template."]
+
+    def value(values: list[object], field: str, default: object = "") -> object:
+        index = column(field)
+        return values[index] if index is not None and index < len(values) else default
+
+    errors: list[str] = []
+    imported: list[dict] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for row_number, values in enumerate(rows[1:], start=2):
+        if not any(str(item).strip() for item in values):
+            continue
+        credential_id, account_error = resolve_target_account(value(values, "account"), accounts)
+        if account_error:
+            errors.append(f"Row {row_number}: {account_error}")
+            continue
+        billing = normalized_header(value(values, "billable_type"))
+        billing = "event" if billing in {"event", "in_app_event", "inapp_event"} else "install" if billing == "install" else billing
+        counting = normalized_header(value(values, "count_method", "unique_users")) or "unique_users"
+        counting = "unique_users" if counting in {"unique_user", "unique_users"} else "event_counter" if counting in {"event_count", "event_counter"} else counting
+        form = {
+            "campaign_name": value(values, "campaign_name"),
+            "offer_id": value(values, "offer_id"),
+            "campaign_app_id": value(values, "app_id"),
+            "campaign_pid": value(values, "pid"),
+            "campaign_prt": value(values, "prt"),
+            "campaign_credential_id": credential_id,
+            "campaign_filter": value(values, "campaign_filter"),
+            "billable_type": billing,
+            "billable_event": value(values, "billable_event"),
+            "count_method": counting,
+            "daily_target": value(values, "daily_target"),
+            "campaign_timezone": value(values, "timezone", "Asia/Kolkata") or "Asia/Kolkata",
+        }
+        target, error = normalize_target_campaign(form, accounts)
+        if error:
+            errors.append(f"Row {row_number}: {error}")
+            continue
+        enabled_value = normalized_header(value(values, "enabled", "yes")) or "yes"
+        if enabled_value not in {"yes", "y", "true", "1", "enabled", "no", "n", "false", "0", "paused"}:
+            errors.append(f"Row {row_number}: Enabled must be Yes or No.")
+            continue
+        target["enabled"] = enabled_value in {"yes", "y", "true", "1", "enabled"}
+        key = (target["campaign_name"].casefold(), target["app_id"], target["pid"].casefold(), target["credential_id"])
+        if key in seen:
+            errors.append(f"Row {row_number}: duplicate campaign/account/App ID/PID combination in this workbook.")
+            continue
+        seen.add(key)
+        imported.append(target)
+    if not imported and not errors:
+        errors.append("No target rows were found below the header.")
+    if errors:
+        return None, errors
+
+    existing = load_json(TARGET_CAMPAIGNS_FILE, [])
+    existing_by_key = {(str(row.get("campaign_name", "")).casefold(), str(row.get("app_id", "")), str(row.get("pid", "")).casefold(), str(row.get("credential_id", ""))): row for row in existing}
+    created = updated = 0
+    for target in imported:
+        key = (target["campaign_name"].casefold(), target["app_id"], target["pid"].casefold(), target["credential_id"])
+        previous = existing_by_key.get(key)
+        if previous:
+            target["id"] = str(previous.get("id") or target["id"])
+            updated += 1
+        else:
+            created += 1
+        existing_by_key[key] = target
+    save_json(TARGET_CAMPAIGNS_FILE, list(existing_by_key.values()))
+    return {"sheet": sheet_name, "rows": len(imported), "created": created, "updated": updated}, []
 
 
 
@@ -328,11 +448,12 @@ ADMIN_LOGIN_HTML = """
 
 ADMIN_HTML = """
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Adsphire P360 Admin</title>
-<style>:root{--orange:#f58220;--bg:#fff8f2;--line:#f0d2b8;--ink:#2a1d12;--dim:#765a45;--red:#e65353;--green:#10a978}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui}.wrap{max-width:1180px;margin:auto;padding:28px 20px}header{display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0}h1 span{color:var(--orange)}a{color:var(--orange);font-weight:700;text-decoration:none}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;margin-top:18px;box-shadow:0 10px 25px rgba(245,130,32,.08)}.grid{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:end}.wide-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;align-items:end}.span2{grid-column:span 2}@media(max-width:900px){.wide-grid{grid-template-columns:repeat(2,minmax(150px,1fr))}}@media(max-width:700px){.grid,.wide-grid{grid-template-columns:1fr}.span2{grid-column:auto}}label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:800;margin-bottom:6px}input,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff}button{padding:11px 16px;border:0;border-radius:9px;font-weight:800;cursor:pointer;background:var(--orange);color:#24170d}.danger{background:#fff;color:var(--red);border:1px solid #efb7b1}.row{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3e3d6}.campaign-row{grid-template-columns:1.3fr 1fr .8fr 1.1fr auto}.row:last-child{border-bottom:0}.token{font-family:monospace;color:var(--green)}.msg{padding:10px;border-radius:8px;background:#fff4e9;color:var(--dim);margin-top:12px}.hint{font-size:13px;color:var(--dim);line-height:1.55}.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#fff1e5;color:#8b4b18;font-size:11px;font-weight:800;text-transform:uppercase}.badge.paused{background:#fff0ee;color:var(--red)}.actions-inline{display:flex;gap:7px}.actions-inline button{padding:8px 10px}small{color:var(--dim)}</style></head>
+<style>:root{--orange:#f58220;--bg:#fff8f2;--line:#f0d2b8;--ink:#2a1d12;--dim:#765a45;--red:#e65353;--green:#10a978}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui}.wrap{max-width:1180px;margin:auto;padding:28px 20px}header{display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}h1{font-size:25px;margin:0}h1 span{color:var(--orange)}a{color:var(--orange);font-weight:700;text-decoration:none}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px;margin-top:18px;box-shadow:0 10px 25px rgba(245,130,32,.08)}.grid{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:end}.wide-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;align-items:end}.span2{grid-column:span 2}@media(max-width:900px){.wide-grid{grid-template-columns:repeat(2,minmax(150px,1fr))}}@media(max-width:700px){.grid,.wide-grid{grid-template-columns:1fr}.span2{grid-column:auto}}label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:800;margin-bottom:6px}input,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff}button,.button-link{display:inline-block;padding:11px 16px;border:0;border-radius:9px;font-weight:800;cursor:pointer;background:var(--orange);color:#24170d;text-decoration:none}.button-link.secondary{background:#fff;color:var(--orange);border:1px solid var(--line)}.danger{background:#fff;color:var(--red);border:1px solid #efb7b1}.row{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3e3d6}.campaign-row{grid-template-columns:1.3fr 1fr .8fr 1.1fr auto}.row:last-child{border-bottom:0}.token{font-family:monospace;color:var(--green)}.msg{padding:10px;border-radius:8px;background:#fff4e9;color:var(--dim);margin-top:12px;white-space:pre-wrap}.hint{font-size:13px;color:var(--dim);line-height:1.55}.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#fff1e5;color:#8b4b18;font-size:11px;font-weight:800;text-transform:uppercase}.badge.paused{background:#fff0ee;color:var(--red)}.actions-inline{display:flex;gap:7px;flex-wrap:wrap}.actions-inline button{padding:8px 10px}small{color:var(--dim)}</style></head>
 <body><div class="wrap"><header><div><h1>Adsphire <span>·</span> P360 Admin</h1><div class="hint">Tokens stay on the server and are never included in the Excel file or sent to the browser.</div></div><div><a href="/">P360</a> &nbsp; · &nbsp; <a href="/targets">Target Dashboard</a> &nbsp; · &nbsp; <a href="/logout">Logout</a></div></header>
 <div class="panel"><h2>Add or update a PRT token</h2><form method="post" class="grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>PRT ID</label><input name="prt" placeholder="adsphirein749" required></div><div><label>AppsFlyer V2 API token</label><input name="token" type="password" placeholder="Paste token" required></div><button name="action" value="save">Save token</button></form>{% if message %}<div class="msg">{{ message }}</div>{% endif %}</div>
 <div class="panel"><h2>Configured PRTs</h2>{% if mappings %}{% for prt, masked in mappings %}<form method="post" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="prt" value="{{ prt }}"><strong>{{ prt }}</strong><span class="token">{{ masked }}</span><button class="danger" name="action" value="delete" onclick="return confirm('Delete this token mapping?')">Delete</button></form>{% endfor %}{% else %}<p class="hint">No PRT tokens configured yet.</p>{% endif %}</div>
 <div class="panel"><h2>AppsFlyer Data Accounts</h2><p class="hint">Add one reusable credential for each Agency or Ad Network account. Saving the same account type and identifier updates it.</p><form method="post" class="wide-grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>Account Name</label><input name="account_label" placeholder="Adsphire Ad Network" required></div><div><label>Account Type</label><select name="account_type"><option value="agency">Agency</option><option value="adnetwork">Ad Network</option></select></div><div><label>PRT / Partner ID</label><input name="account_identifier" placeholder="adsphirein749" required></div><div><label>Associated PIDs</label><input name="account_pids" placeholder="kreditgator_int, crichit67_int"></div><div class="span2"><label>AppsFlyer V2 API Token</label><input name="account_token" type="password" placeholder="Paste token" required></div><div><button name="action" value="save_data_account">Save Data Account</button></div></form>{% if account_rows %}{% for row in account_rows %}<form method="post" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="account_id" value="{{ row.id }}"><strong>{{ row.label }}<br><small>{{ row.identifier }}</small></strong><span>{{ row.pids|join(', ') or 'PIDs selected per campaign' }}</span><span><span class="badge">{{ row.account_type }}</span> <span class="token">{{ row.token_masked }}</span></span><button class="danger" name="action" value="delete_data_account" onclick="return confirm('Delete this data account?')">Delete</button></form>{% endfor %}{% endif %}</div>
+<div class="panel"><h2>Bulk Upload Campaign Targets</h2><p class="hint">Download the template, add one campaign target per row, then upload it here. Existing targets with the same Campaign + Data Account + App ID + PID are updated; new combinations are added. The entire file is validated before anything is saved.</p><form method="post" enctype="multipart/form-data" class="grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>Target Excel File (.xlsx)</label><input type="file" name="target_workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></div><div class="actions-inline"><a class="button-link secondary" href="/Campaign_Target_Upload_Template.xlsx">Download Template</a><button name="action" value="upload_target_excel">Upload & Validate Targets</button></div></form></div>
 <div class="panel"><h2>Campaign Daily Targets</h2><p class="hint">The billing KPI drives achievement. Clicks and impressions use aggregate data; installs and events use raw → postback → aggregate fallback.</p><form method="post" class="wide-grid"><input type="hidden" name="csrf" value="{{ csrf }}"><div><label>Campaign Name</label><input name="campaign_name" required></div><div><label>Offer ID</label><input name="offer_id" placeholder="Optional"></div><div><label>App ID</label><input name="campaign_app_id" required></div><div><label>Media Source / PID</label><input name="campaign_pid" required></div><div><label>PRT</label><input name="campaign_prt" placeholder="Optional for ad network"></div><div><label>Data Account</label><select name="campaign_credential_id" required><option value="">Select account</option>{% for row in account_options %}<option value="{{ row.id }}">{{ row.label }} · {{ row.account_type }}</option>{% endfor %}</select></div><div><label>AF Campaign Filter</label><input name="campaign_filter" placeholder="Optional exact match"></div><div><label>Billing KPI</label><select name="billable_type"><option value="event">In-app event</option><option value="install">Install</option></select></div><div><label>Billable Event Name</label><input name="billable_event" placeholder="Exact case-sensitive name"></div><div><label>Event Counting</label><select name="count_method"><option value="unique_users">Unique Users</option><option value="event_counter">Event Counter</option></select></div><div><label>Daily Target</label><input name="daily_target" type="number" min="1" required></div><div><label>Reporting Timezone</label><input name="campaign_timezone" value="Asia/Kolkata" required></div><div><button name="action" value="save_target_campaign">Save Campaign Target</button></div></form>{% if campaign_rows %}{% for row in campaign_rows %}<form method="post" class="row campaign-row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="campaign_id" value="{{ row.id }}"><strong>{{ row.campaign_name }}<br><small>{{ row.app_id }}</small></strong><span>{{ row.pid }}{% if row.prt %} · {{ row.prt }}{% endif %}</span><span>Target: <b>{{ row.daily_target }}</b></span><span>{{ row.billable_event or 'Installs' }}<br><span class="badge{% if not row.get('enabled', True) %} paused{% endif %}">{{ 'Enabled' if row.get('enabled', True) else 'Paused' }}</span></span><div class="actions-inline"><button name="action" value="toggle_target_campaign">{{ 'Pause' if row.get('enabled', True) else 'Enable' }}</button><button class="danger" name="action" value="delete_target_campaign" onclick="return confirm('Delete this campaign target?')">Delete</button></div></form>{% endfor %}{% endif %}</div>
 <div class="panel"><h2>Storage status</h2><p class="hint">Data directory: <code>{{ data_dir }}</code><br>For Render, attach a persistent disk at <code>/data</code>. Without a disk, admin changes can be lost after a restart or redeploy.</p></div></div></body></html>
 """
@@ -429,6 +550,20 @@ def admin():
                 rows = [item for item in load_json(DATA_ACCOUNTS_FILE, []) if item.get("id") != account_id]
                 save_json(DATA_ACCOUNTS_FILE, rows)
                 message = "Deleted data account."
+            elif action == "upload_target_excel":
+                upload = request.files.get("target_workbook")
+                if not upload or not upload.filename:
+                    message = "Choose an .xlsx target workbook to upload."
+                elif not upload.filename.lower().endswith(".xlsx"):
+                    message = "Target upload must be an .xlsx file."
+                else:
+                    result, errors = import_target_workbook(upload.read(), target_accounts())
+                    if errors:
+                        shown = errors[:20]
+                        suffix = f"\n…and {len(errors) - len(shown)} more error(s)." if len(errors) > len(shown) else ""
+                        message = "Nothing was saved. Fix these Excel errors:\n" + "\n".join(f"• {error}" for error in shown) + suffix
+                    else:
+                        message = f"Excel upload complete: {result['rows']} row(s) validated — {result['created']} created, {result['updated']} updated."
             elif action == "save_target_campaign":
                 row, error = normalize_target_campaign(request.form, target_accounts())
                 if error:
@@ -514,6 +649,17 @@ def target_config():
 @login_required
 def excel_template():
     return send_file(EXCEL_FILE, as_attachment=True, download_name="P360_Config_Template.xlsx")
+
+
+@app.route("/Campaign_Target_Upload_Template.xlsx")
+@login_required
+def target_upload_template():
+    return send_file(
+        TARGET_TEMPLATE_FILE,
+        as_attachment=True,
+        download_name="Campaign_Target_Upload_Template.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.route("/README.md")
