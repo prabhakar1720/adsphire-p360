@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import csv
 import hashlib
 import hmac
 import io
@@ -10,6 +11,7 @@ import os
 import posixpath
 import re
 import secrets
+import sqlite3
 import tempfile
 import threading
 import urllib.error
@@ -124,6 +126,74 @@ def report_cache_ttl(kind: str, query: dict[str, list[str]]) -> int:
 def report_cache_paths(token: str, target: str) -> tuple[Path, Path, str]:
     digest = hashlib.sha256((token + "\0" + target).encode("utf-8")).hexdigest()
     return REPORT_CACHE_DIR / f"{digest}.csv", REPORT_CACHE_DIR / f"{digest}.json", digest
+
+
+class ReportAccessError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def ensure_cached_report_file(token: str, app_id: str, kind: str, report: str, query: dict[str, str]) -> tuple[Path, str]:
+    """Fetch a report into the shared disk cache without holding the CSV in RAM."""
+    route = f"/api/{kind}/export/app/{urllib.parse.quote(app_id, safe='')}/{report}/v5"
+    encoded_query = urllib.parse.urlencode(query)
+    target = AF_HOST + route + ("?" + encoded_query if encoded_query else "")
+    data_path, meta_path, cache_key = report_cache_paths(token, target)
+    ttl = report_cache_ttl(kind, {key: [value] for key, value in query.items()})
+
+    def current() -> bool:
+        meta = load_json(meta_path, {})
+        age = datetime.now(timezone.utc).timestamp() - float(meta.get("fetched_at_epoch", 0))
+        return data_path.exists() and meta_path.exists() and age < ttl
+
+    if current():
+        return data_path, "HIT"
+    with _report_cache_locks_guard:
+        cache_lock = _report_cache_locks.setdefault(cache_key, threading.Lock())
+    with cache_lock:
+        if current():
+            return data_path, "HIT"
+        outbound = urllib.request.Request(target, method="GET")
+        outbound.add_header("Authorization", "Bearer " + token)
+        outbound.add_header("Accept", "text/csv")
+        outbound.add_header("User-Agent", "Adsphire-P360-Hosted/1.0")
+        temp_name = ""
+        try:
+            fd, temp_name = tempfile.mkstemp(prefix=data_path.name + ".", dir=str(REPORT_CACHE_DIR))
+            with os.fdopen(fd, "wb") as output, urllib.request.urlopen(outbound, timeout=300) as response:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+                content_type = response.headers.get("Content-Type", "text/csv; charset=utf-8")
+            os.chmod(temp_name, 0o600)
+            os.replace(temp_name, data_path)
+            temp_name = ""
+            fetched = datetime.now(timezone.utc)
+            save_json(meta_path, {
+                "fetched_at": fetched.isoformat(),
+                "fetched_at_epoch": fetched.timestamp(),
+                "content_type": content_type,
+                "kind": kind,
+                "report": report,
+            })
+            return data_path, "MISS"
+        except urllib.error.HTTPError as exc:
+            if data_path.exists() and meta_path.exists() and exc.code in {403, 429, 500, 502, 503, 504}:
+                return data_path, "STALE"
+            detail = exc.read(4096).decode("utf-8", errors="replace")
+            raise ReportAccessError(exc.code, f"{report} {exc.code}: {detail[:300]}") from exc
+        except Exception as exc:
+            if data_path.exists() and meta_path.exists():
+                return data_path, "STALE"
+            raise ReportAccessError(502, f"{report}: {exc}") from exc
+        finally:
+            if temp_name and os.path.exists(temp_name):
+                os.unlink(temp_name)
 
 
 def cached_report_response(data_path: Path, meta_path: Path, cache_status: str):
@@ -642,7 +712,7 @@ def target_config():
         public.pop("token_masked", None)
         accounts.append(public)
     campaigns = [row for row in load_json(TARGET_CAMPAIGNS_FILE, []) if row.get("enabled", True)]
-    return jsonify({"accounts": accounts, "campaigns": campaigns})
+    return jsonify({"accounts": accounts, "campaigns": campaigns, "csrf": csrf_token()})
 
 
 @app.route("/P360_Config_Template.xlsx")
@@ -920,6 +990,241 @@ def import_config():
     except OSError as exc:
         return jsonify({"error": f"The workbook was valid but could not be saved on the server: {exc}"}), 500
     return jsonify({"saved": True, "filename": filename, "saved_at": saved_at, "sheets": sheets})
+
+
+def report_row(row: dict[str, object]) -> dict[str, str]:
+    return {normalized_header(key): str(value or "").strip() for key, value in row.items() if key is not None}
+
+
+def report_value(row: dict[str, str], *names: str) -> str:
+    for name in names:
+        value = row.get(normalized_header(name), "")
+        if value != "":
+            return value
+    return ""
+
+
+def report_number(value: object) -> float:
+    try:
+        return float(str(value or "0").replace(",", ""))
+    except ValueError:
+        return 0.0
+
+
+def report_pid(row: dict[str, str]) -> str:
+    return report_value(row, "media_source", "media_source_pid", "pid", "partner", "media source")
+
+
+def report_campaign(row: dict[str, str]) -> str:
+    return report_value(row, "campaign", "campaign_name", "c")
+
+
+def report_day(row: dict[str, str], event: bool = False) -> str:
+    names = ("event_time", "event date", "event_date", "date") if event else ("install_time", "attributed_touch_time", "postback_time", "date")
+    match = re.search(r"\d{4}-\d{2}-\d{2}", report_value(row, *names))
+    return match.group(0) if match else ""
+
+
+def report_blocked(row: dict[str, str]) -> bool:
+    fraud = normalized_header(report_value(row, "is_fraud", "fraud", "blocked", "is_blocked"))
+    if fraud in {"true", "1", "yes", "blocked", "fraud"}:
+        return True
+    return bool(report_value(row, "blocked_reason", "fraud_reason", "rejection_reason"))
+
+
+def target_row_matches(row: dict[str, str], campaign: dict, allow_missing_pid: bool = False) -> bool:
+    row_pid = report_pid(row)
+    wanted_pid = str(campaign.get("pid", "")).strip()
+    if wanted_pid and row_pid and row_pid.casefold() != wanted_pid.casefold():
+        return False
+    if wanted_pid and not row_pid and not allow_missing_pid:
+        return False
+    wanted_campaign = str(campaign.get("campaign_filter", "")).strip()
+    if wanted_campaign and report_campaign(row).casefold() != wanted_campaign.casefold():
+        return False
+    row_prt = report_value(row, "agency_pmd_af_prt", "agency", "af_prt")
+    wanted_prt = str(campaign.get("prt", "")).strip()
+    if wanted_prt and row_prt and row_prt.casefold() != wanted_prt.casefold():
+        return False
+    return True
+
+
+def target_report_query(from_date: str, to_date: str, timezone_name: str, report: str, event_name: str) -> dict[str, str]:
+    query = {"from": from_date, "to": to_date, "timezone": timezone_name}
+    if report == "partners_by_date_report":
+        query["category"] = "standard"
+    else:
+        query["maximum_rows"] = "1000000"
+    if event_name:
+        query["event_name"] = event_name
+    return query
+
+
+def aggregate_target_summary(path: Path, campaigns: list[dict], days: list[str]) -> dict:
+    with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
+        rows = [report_row(row) for row in csv.DictReader(handle)]
+    has_pid = any(report_pid(row) for row in rows)
+    counts = {str(campaign["id"]): {day: {"clicks": 0, "impressions": 0, "installs": 0, "event": 0} for day in days} for campaign in campaigns}
+    errors: dict[str, str] = {}
+    all_campaigns = load_json(TARGET_CAMPAIGNS_FILE, [])
+    for campaign in campaigns:
+        campaign_id = str(campaign["id"])
+        if not has_pid:
+            siblings = [item for item in all_campaigns if item.get("enabled", True) and str(item.get("credential_id")) == str(campaign.get("credential_id")) and item.get("app_id") == campaign.get("app_id")]
+            if len(siblings) > 1 and not str(campaign.get("campaign_filter", "")).strip():
+                errors[campaign_id] = "Aggregate app total cannot be assigned because multiple campaign rows share this app and credential. Add exact campaign filters in Admin."
+                continue
+        for row in rows:
+            day = report_day(row)
+            if not day and len(days) == 1:
+                day = days[0]
+            if day not in counts[campaign_id] or not target_row_matches(row, campaign, allow_missing_pid=not has_pid):
+                continue
+            target = counts[campaign_id][day]
+            target["clicks"] += report_number(report_value(row, "clicks"))
+            target["impressions"] += report_number(report_value(row, "impressions"))
+            target["installs"] += report_number(report_value(row, "installs", "attributions", "conversions"))
+            if campaign.get("billable_type") != "event" or not campaign.get("billable_event"):
+                continue
+            event_name = str(campaign.get("billable_event", ""))
+            row_event = report_value(row, "event_name", "event name", "event")
+            if row_event:
+                if row_event == event_name:
+                    metric_names = ("event_counter", "event counter", "events") if campaign.get("count_method") == "event_counter" else ("unique_users", "unique users", "unique events")
+                    target["event"] += report_number(report_value(row, *metric_names))
+                continue
+            marker = "event_counter" if campaign.get("count_method") == "event_counter" else "unique_users"
+            prefix = normalized_header(event_name)
+            for key, value in row.items():
+                if key == f"{prefix}_{marker}" or (key.startswith(prefix + "_") and key.endswith("_" + marker)):
+                    target["event"] += report_number(value)
+                    break
+
+    known = {str(item.get("pid", "")).strip().casefold() for item in all_campaigns if str(item.get("credential_id")) == str(campaigns[0].get("credential_id")) and item.get("app_id") == campaigns[0].get("app_id") and str(item.get("pid", "")).strip()}
+    discovered_groups: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        pid = report_pid(row)
+        day = report_day(row)
+        if not day and len(days) == 1:
+            day = days[0]
+        if not pid or pid.casefold() == "organic" or pid.casefold() in known or day not in days:
+            continue
+        key = (day, pid.casefold())
+        item = discovered_groups.setdefault(key, {"date": day, "pid": pid, "clicks": 0, "impressions": 0, "installs": 0, "campaigns": set()})
+        item["clicks"] += report_number(report_value(row, "clicks"))
+        item["impressions"] += report_number(report_value(row, "impressions"))
+        item["installs"] += report_number(report_value(row, "installs", "attributions", "conversions"))
+        if report_campaign(row):
+            item["campaigns"].add(report_campaign(row))
+    discovered = [{**item, "campaigns": sorted(item["campaigns"])} for item in discovered_groups.values()]
+    return {"counts": counts, "errors": errors, "has_pid": has_pid, "discovered": discovered}
+
+
+def raw_target_summary(path: Path, campaigns: list[dict], days: list[str], event_name: str = "") -> dict:
+    counts = {str(campaign["id"]): {day: 0 for day in days} for campaign in campaigns}
+    unique_campaigns = {str(campaign["id"]) for campaign in campaigns if event_name and campaign.get("count_method") != "event_counter"}
+    anonymous: dict[tuple[str, str], int] = {}
+    db_path = ""
+    connection = None
+    batch: list[tuple[str, str, bytes]] = []
+    try:
+        if unique_campaigns:
+            fd, db_path = tempfile.mkstemp(prefix="target-unique-", suffix=".sqlite", dir="/tmp")
+            os.close(fd)
+            connection = sqlite3.connect(db_path)
+            connection.execute("PRAGMA journal_mode=OFF")
+            connection.execute("PRAGMA synchronous=OFF")
+            connection.execute("CREATE TABLE identities (campaign_id TEXT, day TEXT, identity BLOB, PRIMARY KEY (campaign_id, day, identity)) WITHOUT ROWID")
+        with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
+            for source_row in csv.DictReader(handle):
+                row = report_row(source_row)
+                if report_blocked(row):
+                    continue
+                day = report_day(row, event=bool(event_name))
+                if not day and len(days) == 1:
+                    day = days[0]
+                if day not in days:
+                    continue
+                if event_name and report_value(row, "event_name", "event") != event_name:
+                    continue
+                for campaign in campaigns:
+                    if not target_row_matches(row, campaign):
+                        continue
+                    campaign_id = str(campaign["id"])
+                    if campaign_id not in unique_campaigns:
+                        counts[campaign_id][day] += 1
+                        continue
+                    identity = report_value(row, "appsflyer_id", "customer_user_id", "advertising_id", "idfa", "idfv")
+                    if identity:
+                        batch.append((campaign_id, day, hashlib.sha1(identity.encode("utf-8", errors="replace")).digest()))
+                        if len(batch) >= 2000:
+                            connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?)", batch)
+                            batch.clear()
+                    else:
+                        anonymous[(campaign_id, day)] = anonymous.get((campaign_id, day), 0) + 1
+        if connection:
+            if batch:
+                connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?)", batch)
+            connection.commit()
+            for campaign_id, day, total in connection.execute("SELECT campaign_id, day, COUNT(*) FROM identities GROUP BY campaign_id, day"):
+                counts[campaign_id][day] = int(total) + anonymous.get((campaign_id, day), 0)
+        return {"counts": counts}
+    finally:
+        if connection:
+            connection.close()
+        if db_path and os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+@app.route("/api/target-report-summary", methods=["POST"])
+@login_required
+def target_report_summary():
+    if not valid_csrf(request.headers.get("X-CSRF-Token")):
+        return jsonify({"error": "Session expired. Reload and retry."}), 403
+    payload = request.get_json(silent=True) or {}
+    report = str(payload.get("report", ""))
+    report_map = {
+        "partners_by_date_report": "agg-data",
+        "installs_report": "raw-data",
+        "postbacks": "raw-data",
+        "in_app_events_report": "raw-data",
+        "in-app-events-postbacks": "raw-data",
+    }
+    if report not in report_map:
+        return jsonify({"error": "Target report is not allowed."}), 400
+    try:
+        from_date = datetime.strptime(str(payload.get("from", "")), "%Y-%m-%d").date()
+        to_date = datetime.strptime(str(payload.get("to", "")), "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Invalid report date range."}), 400
+    if from_date > to_date or (to_date - from_date).days > 30:
+        return jsonify({"error": "Choose a valid date range of 31 days or less."}), 400
+    days = [(from_date + timedelta(days=offset)).isoformat() for offset in range((to_date - from_date).days + 1)]
+    requested_ids = {str(value) for value in payload.get("campaign_ids", []) if str(value)}
+    configured = [row for row in load_json(TARGET_CAMPAIGNS_FILE, []) if row.get("enabled", True)]
+    campaigns = [row for row in configured if str(row.get("id")) in requested_ids]
+    if not campaigns or len(campaigns) != len(requested_ids):
+        return jsonify({"error": "One or more selected campaign targets no longer exist."}), 422
+    scope = {(str(row.get("credential_id")), str(row.get("app_id")), str(row.get("timezone") or "UTC")) for row in campaigns}
+    if len(scope) != 1:
+        return jsonify({"error": "Each summary request must contain one data account, App ID and timezone scope."}), 400
+    credential_id, app_id, timezone_name = next(iter(scope))
+    account = next((row for row in target_accounts() if str(row.get("id")) == credential_id), None)
+    if not account or not account.get("token"):
+        return jsonify({"error": "The selected AppsFlyer data account is missing or has no token."}), 422
+    event_name = str(payload.get("event_name", "")).strip()
+    if event_name:
+        campaigns = [row for row in campaigns if row.get("billable_type") == "event" and str(row.get("billable_event", "")) == event_name]
+        if not campaigns:
+            return jsonify({"error": "No selected campaign uses that billable event."}), 400
+    query = target_report_query(from_date.isoformat(), to_date.isoformat(), timezone_name, report, event_name)
+    try:
+        path, cache_status = ensure_cached_report_file(str(account["token"]), app_id, report_map[report], report, query)
+        summary = aggregate_target_summary(path, campaigns, days) if report == "partners_by_date_report" else raw_target_summary(path, campaigns, days, event_name)
+        summary["cache"] = cache_status
+        return jsonify(summary)
+    except ReportAccessError as exc:
+        return jsonify({"error": str(exc), "status": exc.status}), exc.status
 
 
 @app.route("/af/api/<kind>/export/app/<app_id>/<report>/v5")
