@@ -1060,6 +1060,24 @@ def target_report_query(from_date: str, to_date: str, timezone_name: str, report
     return query
 
 
+def aggregate_event_value(row: dict[str, str], campaign: dict) -> float:
+    if campaign.get("billable_type") != "event" or not campaign.get("billable_event"):
+        return 0.0
+    event_name = str(campaign.get("billable_event", ""))
+    row_event = report_value(row, "event_name", "event name", "event")
+    if row_event:
+        if row_event != event_name:
+            return 0.0
+        metric_names = ("event_counter", "event counter", "events") if campaign.get("count_method") == "event_counter" else ("unique_users", "unique users", "unique events")
+        return report_number(report_value(row, *metric_names))
+    marker = "event_counter" if campaign.get("count_method") == "event_counter" else "unique_users"
+    prefix = normalized_header(event_name)
+    for key, value in row.items():
+        if key == f"{prefix}_{marker}" or (key.startswith(prefix + "_") and key.endswith("_" + marker)):
+            return report_number(value)
+    return 0.0
+
+
 def aggregate_target_summary(path: Path, campaigns: list[dict], days: list[str]) -> dict:
     with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
         rows = [report_row(row) for row in csv.DictReader(handle)]
@@ -1084,21 +1102,7 @@ def aggregate_target_summary(path: Path, campaigns: list[dict], days: list[str])
             target["clicks"] += report_number(report_value(row, "clicks"))
             target["impressions"] += report_number(report_value(row, "impressions"))
             target["installs"] += report_number(report_value(row, "installs", "attributions", "conversions"))
-            if campaign.get("billable_type") != "event" or not campaign.get("billable_event"):
-                continue
-            event_name = str(campaign.get("billable_event", ""))
-            row_event = report_value(row, "event_name", "event name", "event")
-            if row_event:
-                if row_event == event_name:
-                    metric_names = ("event_counter", "event counter", "events") if campaign.get("count_method") == "event_counter" else ("unique_users", "unique users", "unique events")
-                    target["event"] += report_number(report_value(row, *metric_names))
-                continue
-            marker = "event_counter" if campaign.get("count_method") == "event_counter" else "unique_users"
-            prefix = normalized_header(event_name)
-            for key, value in row.items():
-                if key == f"{prefix}_{marker}" or (key.startswith(prefix + "_") and key.endswith("_" + marker)):
-                    target["event"] += report_number(value)
-                    break
+            target["event"] += aggregate_event_value(row, campaign)
 
     known = {str(item.get("pid", "")).strip().casefold() for item in all_campaigns if str(item.get("credential_id")) == str(campaigns[0].get("credential_id")) and item.get("app_id") == campaigns[0].get("app_id") and str(item.get("pid", "")).strip()}
     discovered_groups: dict[tuple[str, str], dict] = {}
@@ -1110,23 +1114,45 @@ def aggregate_target_summary(path: Path, campaigns: list[dict], days: list[str])
         if not pid or pid.casefold() == "organic" or pid.casefold() in known or day not in days:
             continue
         key = (day, pid.casefold())
-        item = discovered_groups.setdefault(key, {"date": day, "pid": pid, "clicks": 0, "impressions": 0, "installs": 0, "campaigns": set()})
+        item = discovered_groups.setdefault(key, {"date": day, "pid": pid, "clicks": 0, "impressions": 0, "installs": 0, "events": {}, "campaigns": set()})
         item["clicks"] += report_number(report_value(row, "clicks"))
         item["impressions"] += report_number(report_value(row, "impressions"))
         item["installs"] += report_number(report_value(row, "installs", "attributions", "conversions"))
         if report_campaign(row):
             item["campaigns"].add(report_campaign(row))
+        for campaign in campaigns:
+            if str(campaign.get("pid", "")).strip() or not target_row_matches(row, campaign, allow_missing_pid=not has_pid):
+                continue
+            campaign_id = str(campaign["id"])
+            item["events"][campaign_id] = item["events"].get(campaign_id, 0) + aggregate_event_value(row, campaign)
     discovered = [{**item, "campaigns": sorted(item["campaigns"])} for item in discovered_groups.values()]
-    return {"counts": counts, "errors": errors, "has_pid": has_pid, "discovered": discovered}
+    return {
+        "counts": counts,
+        "range_counts": {
+            campaign_id: {
+                metric: sum(report_day_counts[metric] for report_day_counts in day_counts.values())
+                for metric in ("clicks", "impressions", "installs", "event")
+            }
+            for campaign_id, day_counts in counts.items()
+        },
+        "errors": errors,
+        "has_pid": has_pid,
+        "discovered": discovered,
+        "date_basis": "install_cohort",
+    }
 
 
 def raw_target_summary(path: Path, campaigns: list[dict], days: list[str], event_name: str = "") -> dict:
     counts = {str(campaign["id"]): {day: 0 for day in days} for campaign in campaigns}
+    by_pid = {str(campaign["id"]): {day: {} for day in days} for campaign in campaigns}
+    range_counts = {str(campaign["id"]): 0 for campaign in campaigns}
+    by_pid_range = {str(campaign["id"]): {} for campaign in campaigns}
     unique_campaigns = {str(campaign["id"]) for campaign in campaigns if event_name and campaign.get("count_method") != "event_counter"}
     anonymous: dict[tuple[str, str], int] = {}
+    anonymous_by_pid: dict[tuple[str, str, str], int] = {}
     db_path = ""
     connection = None
-    batch: list[tuple[str, str, bytes]] = []
+    batch: list[tuple[str, str, str, bytes]] = []
     try:
         if unique_campaigns:
             fd, db_path = tempfile.mkstemp(prefix="target-unique-", suffix=".sqlite", dir="/tmp")
@@ -1134,7 +1160,7 @@ def raw_target_summary(path: Path, campaigns: list[dict], days: list[str], event
             connection = sqlite3.connect(db_path)
             connection.execute("PRAGMA journal_mode=OFF")
             connection.execute("PRAGMA synchronous=OFF")
-            connection.execute("CREATE TABLE identities (campaign_id TEXT, day TEXT, identity BLOB, PRIMARY KEY (campaign_id, day, identity)) WITHOUT ROWID")
+            connection.execute("CREATE TABLE identities (campaign_id TEXT, day TEXT, pid TEXT, identity BLOB, PRIMARY KEY (campaign_id, day, pid, identity)) WITHOUT ROWID")
         with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
             for source_row in csv.DictReader(handle):
                 row = report_row(source_row)
@@ -1147,28 +1173,47 @@ def raw_target_summary(path: Path, campaigns: list[dict], days: list[str], event
                     continue
                 if event_name and report_value(row, "event_name", "event") != event_name:
                     continue
+                row_pid = report_pid(row).casefold()
                 for campaign in campaigns:
                     if not target_row_matches(row, campaign):
                         continue
                     campaign_id = str(campaign["id"])
                     if campaign_id not in unique_campaigns:
                         counts[campaign_id][day] += 1
+                        range_counts[campaign_id] += 1
+                        if row_pid:
+                            by_pid[campaign_id][day][row_pid] = by_pid[campaign_id][day].get(row_pid, 0) + 1
+                            by_pid_range[campaign_id][row_pid] = by_pid_range[campaign_id].get(row_pid, 0) + 1
                         continue
                     identity = report_value(row, "appsflyer_id", "customer_user_id", "advertising_id", "idfa", "idfv")
                     if identity:
-                        batch.append((campaign_id, day, hashlib.sha1(identity.encode("utf-8", errors="replace")).digest()))
+                        batch.append((campaign_id, day, row_pid, hashlib.sha1(identity.encode("utf-8", errors="replace")).digest()))
                         if len(batch) >= 2000:
-                            connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?)", batch)
+                            connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?, ?)", batch)
                             batch.clear()
                     else:
                         anonymous[(campaign_id, day)] = anonymous.get((campaign_id, day), 0) + 1
+                        if row_pid:
+                            anonymous_by_pid[(campaign_id, day, row_pid)] = anonymous_by_pid.get((campaign_id, day, row_pid), 0) + 1
         if connection:
             if batch:
-                connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?)", batch)
+                connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?, ?)", batch)
             connection.commit()
-            for campaign_id, day, total in connection.execute("SELECT campaign_id, day, COUNT(*) FROM identities GROUP BY campaign_id, day"):
+            for campaign_id, day, total in connection.execute("SELECT campaign_id, day, COUNT(DISTINCT identity) FROM identities GROUP BY campaign_id, day"):
                 counts[campaign_id][day] = int(total) + anonymous.get((campaign_id, day), 0)
-        return {"counts": counts}
+            for campaign_id, day, pid, total in connection.execute("SELECT campaign_id, day, pid, COUNT(*) FROM identities WHERE pid <> '' GROUP BY campaign_id, day, pid"):
+                by_pid[campaign_id][day][pid] = int(total) + anonymous_by_pid.get((campaign_id, day, pid), 0)
+            for campaign_id, total in connection.execute("SELECT campaign_id, COUNT(DISTINCT identity) FROM identities GROUP BY campaign_id"):
+                range_counts[campaign_id] = int(total) + sum(value for (cid, _day), value in anonymous.items() if cid == campaign_id)
+            for campaign_id, pid, total in connection.execute("SELECT campaign_id, pid, COUNT(DISTINCT identity) FROM identities WHERE pid <> '' GROUP BY campaign_id, pid"):
+                by_pid_range[campaign_id][pid] = int(total) + sum(value for (cid, _day, row_pid), value in anonymous_by_pid.items() if cid == campaign_id and row_pid == pid)
+        return {
+            "counts": counts,
+            "by_pid": by_pid,
+            "range_counts": range_counts,
+            "by_pid_range": by_pid_range,
+            "date_basis": "event_time" if event_name else "install_time",
+        }
     finally:
         if connection:
             connection.close()
