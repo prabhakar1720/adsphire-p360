@@ -72,7 +72,6 @@ RAW_REPORTS = {
     "detection",
 }
 AGG_REPORTS = {"partners_by_date_report"}
-PROTECT360_PARTNER_REPORTS = {"blocked_installs_report", "detection"}
 ALLOWED_TIMEZONES = {"UTC", "Asia/Kolkata", "Asia/Manila", "Asia/Jakarta"}
 
 app = Flask(__name__)
@@ -210,8 +209,6 @@ def cached_report_response(data_path: Path, meta_path: Path, cache_status: str):
     )
     response.headers["X-AF-Cache"] = cache_status
     response.headers["X-AF-Cached-At"] = str(meta.get("fetched_at", ""))
-    if meta.get("route_mode"):
-        response.headers["X-AF-Route"] = str(meta["route_mode"])
     return response
 
 
@@ -1063,24 +1060,6 @@ def target_report_query(from_date: str, to_date: str, timezone_name: str, report
     return query
 
 
-def aggregate_event_value(row: dict[str, str], campaign: dict) -> float:
-    if campaign.get("billable_type") != "event" or not campaign.get("billable_event"):
-        return 0.0
-    event_name = str(campaign.get("billable_event", ""))
-    row_event = report_value(row, "event_name", "event name", "event")
-    if row_event:
-        if row_event != event_name:
-            return 0.0
-        metric_names = ("event_counter", "event counter", "events") if campaign.get("count_method") == "event_counter" else ("unique_users", "unique users", "unique events")
-        return report_number(report_value(row, *metric_names))
-    marker = "event_counter" if campaign.get("count_method") == "event_counter" else "unique_users"
-    prefix = normalized_header(event_name)
-    for key, value in row.items():
-        if key == f"{prefix}_{marker}" or (key.startswith(prefix + "_") and key.endswith("_" + marker)):
-            return report_number(value)
-    return 0.0
-
-
 def aggregate_target_summary(path: Path, campaigns: list[dict], days: list[str]) -> dict:
     with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
         rows = [report_row(row) for row in csv.DictReader(handle)]
@@ -1105,7 +1084,21 @@ def aggregate_target_summary(path: Path, campaigns: list[dict], days: list[str])
             target["clicks"] += report_number(report_value(row, "clicks"))
             target["impressions"] += report_number(report_value(row, "impressions"))
             target["installs"] += report_number(report_value(row, "installs", "attributions", "conversions"))
-            target["event"] += aggregate_event_value(row, campaign)
+            if campaign.get("billable_type") != "event" or not campaign.get("billable_event"):
+                continue
+            event_name = str(campaign.get("billable_event", ""))
+            row_event = report_value(row, "event_name", "event name", "event")
+            if row_event:
+                if row_event == event_name:
+                    metric_names = ("event_counter", "event counter", "events") if campaign.get("count_method") == "event_counter" else ("unique_users", "unique users", "unique events")
+                    target["event"] += report_number(report_value(row, *metric_names))
+                continue
+            marker = "event_counter" if campaign.get("count_method") == "event_counter" else "unique_users"
+            prefix = normalized_header(event_name)
+            for key, value in row.items():
+                if key == f"{prefix}_{marker}" or (key.startswith(prefix + "_") and key.endswith("_" + marker)):
+                    target["event"] += report_number(value)
+                    break
 
     known = {str(item.get("pid", "")).strip().casefold() for item in all_campaigns if str(item.get("credential_id")) == str(campaigns[0].get("credential_id")) and item.get("app_id") == campaigns[0].get("app_id") and str(item.get("pid", "")).strip()}
     discovered_groups: dict[tuple[str, str], dict] = {}
@@ -1117,45 +1110,23 @@ def aggregate_target_summary(path: Path, campaigns: list[dict], days: list[str])
         if not pid or pid.casefold() == "organic" or pid.casefold() in known or day not in days:
             continue
         key = (day, pid.casefold())
-        item = discovered_groups.setdefault(key, {"date": day, "pid": pid, "clicks": 0, "impressions": 0, "installs": 0, "events": {}, "campaigns": set()})
+        item = discovered_groups.setdefault(key, {"date": day, "pid": pid, "clicks": 0, "impressions": 0, "installs": 0, "campaigns": set()})
         item["clicks"] += report_number(report_value(row, "clicks"))
         item["impressions"] += report_number(report_value(row, "impressions"))
         item["installs"] += report_number(report_value(row, "installs", "attributions", "conversions"))
         if report_campaign(row):
             item["campaigns"].add(report_campaign(row))
-        for campaign in campaigns:
-            if str(campaign.get("pid", "")).strip() or not target_row_matches(row, campaign, allow_missing_pid=not has_pid):
-                continue
-            campaign_id = str(campaign["id"])
-            item["events"][campaign_id] = item["events"].get(campaign_id, 0) + aggregate_event_value(row, campaign)
     discovered = [{**item, "campaigns": sorted(item["campaigns"])} for item in discovered_groups.values()]
-    return {
-        "counts": counts,
-        "range_counts": {
-            campaign_id: {
-                metric: sum(report_day_counts[metric] for report_day_counts in day_counts.values())
-                for metric in ("clicks", "impressions", "installs", "event")
-            }
-            for campaign_id, day_counts in counts.items()
-        },
-        "errors": errors,
-        "has_pid": has_pid,
-        "discovered": discovered,
-        "date_basis": "install_cohort",
-    }
+    return {"counts": counts, "errors": errors, "has_pid": has_pid, "discovered": discovered}
 
 
 def raw_target_summary(path: Path, campaigns: list[dict], days: list[str], event_name: str = "") -> dict:
     counts = {str(campaign["id"]): {day: 0 for day in days} for campaign in campaigns}
-    by_pid = {str(campaign["id"]): {day: {} for day in days} for campaign in campaigns}
-    range_counts = {str(campaign["id"]): 0 for campaign in campaigns}
-    by_pid_range = {str(campaign["id"]): {} for campaign in campaigns}
     unique_campaigns = {str(campaign["id"]) for campaign in campaigns if event_name and campaign.get("count_method") != "event_counter"}
     anonymous: dict[tuple[str, str], int] = {}
-    anonymous_by_pid: dict[tuple[str, str, str], int] = {}
     db_path = ""
     connection = None
-    batch: list[tuple[str, str, str, bytes]] = []
+    batch: list[tuple[str, str, bytes]] = []
     try:
         if unique_campaigns:
             fd, db_path = tempfile.mkstemp(prefix="target-unique-", suffix=".sqlite", dir="/tmp")
@@ -1163,7 +1134,7 @@ def raw_target_summary(path: Path, campaigns: list[dict], days: list[str], event
             connection = sqlite3.connect(db_path)
             connection.execute("PRAGMA journal_mode=OFF")
             connection.execute("PRAGMA synchronous=OFF")
-            connection.execute("CREATE TABLE identities (campaign_id TEXT, day TEXT, pid TEXT, identity BLOB, PRIMARY KEY (campaign_id, day, pid, identity)) WITHOUT ROWID")
+            connection.execute("CREATE TABLE identities (campaign_id TEXT, day TEXT, identity BLOB, PRIMARY KEY (campaign_id, day, identity)) WITHOUT ROWID")
         with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
             for source_row in csv.DictReader(handle):
                 row = report_row(source_row)
@@ -1176,47 +1147,28 @@ def raw_target_summary(path: Path, campaigns: list[dict], days: list[str], event
                     continue
                 if event_name and report_value(row, "event_name", "event") != event_name:
                     continue
-                row_pid = report_pid(row).casefold()
                 for campaign in campaigns:
                     if not target_row_matches(row, campaign):
                         continue
                     campaign_id = str(campaign["id"])
                     if campaign_id not in unique_campaigns:
                         counts[campaign_id][day] += 1
-                        range_counts[campaign_id] += 1
-                        if row_pid:
-                            by_pid[campaign_id][day][row_pid] = by_pid[campaign_id][day].get(row_pid, 0) + 1
-                            by_pid_range[campaign_id][row_pid] = by_pid_range[campaign_id].get(row_pid, 0) + 1
                         continue
                     identity = report_value(row, "appsflyer_id", "customer_user_id", "advertising_id", "idfa", "idfv")
                     if identity:
-                        batch.append((campaign_id, day, row_pid, hashlib.sha1(identity.encode("utf-8", errors="replace")).digest()))
+                        batch.append((campaign_id, day, hashlib.sha1(identity.encode("utf-8", errors="replace")).digest()))
                         if len(batch) >= 2000:
-                            connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?, ?)", batch)
+                            connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?)", batch)
                             batch.clear()
                     else:
                         anonymous[(campaign_id, day)] = anonymous.get((campaign_id, day), 0) + 1
-                        if row_pid:
-                            anonymous_by_pid[(campaign_id, day, row_pid)] = anonymous_by_pid.get((campaign_id, day, row_pid), 0) + 1
         if connection:
             if batch:
-                connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?, ?)", batch)
+                connection.executemany("INSERT OR IGNORE INTO identities VALUES (?, ?, ?)", batch)
             connection.commit()
-            for campaign_id, day, total in connection.execute("SELECT campaign_id, day, COUNT(DISTINCT identity) FROM identities GROUP BY campaign_id, day"):
+            for campaign_id, day, total in connection.execute("SELECT campaign_id, day, COUNT(*) FROM identities GROUP BY campaign_id, day"):
                 counts[campaign_id][day] = int(total) + anonymous.get((campaign_id, day), 0)
-            for campaign_id, day, pid, total in connection.execute("SELECT campaign_id, day, pid, COUNT(*) FROM identities WHERE pid <> '' GROUP BY campaign_id, day, pid"):
-                by_pid[campaign_id][day][pid] = int(total) + anonymous_by_pid.get((campaign_id, day, pid), 0)
-            for campaign_id, total in connection.execute("SELECT campaign_id, COUNT(DISTINCT identity) FROM identities GROUP BY campaign_id"):
-                range_counts[campaign_id] = int(total) + sum(value for (cid, _day), value in anonymous.items() if cid == campaign_id)
-            for campaign_id, pid, total in connection.execute("SELECT campaign_id, pid, COUNT(DISTINCT identity) FROM identities WHERE pid <> '' GROUP BY campaign_id, pid"):
-                by_pid_range[campaign_id][pid] = int(total) + sum(value for (cid, _day, row_pid), value in anonymous_by_pid.items() if cid == campaign_id and row_pid == pid)
-        return {
-            "counts": counts,
-            "by_pid": by_pid,
-            "range_counts": range_counts,
-            "by_pid_range": by_pid_range,
-            "date_basis": "event_time" if event_name else "install_time",
-        }
+        return {"counts": counts}
     finally:
         if connection:
             connection.close()
@@ -1291,14 +1243,12 @@ def appsflyer_proxy(kind: str, app_id: str, report: str):
     prt = request.headers.get("X-P360-PRT", "").strip()
     token = ""
     credential_label = prt
-    credential_type = "agency" if prt else ""
     if credential_id:
         account = next((row for row in target_accounts() if str(row.get("id")) == credential_id), None)
         if not account:
             return jsonify({"error": "The selected AppsFlyer data account no longer exists."}), 422
         token = str(account.get("token", ""))
         credential_label = str(account.get("label") or account.get("identifier") or credential_id)
-        credential_type = str(account.get("account_type") or "agency")
     else:
         mappings = load_json(TOKEN_FILE, {})
         token = mappings.get(prt, "")
@@ -1307,24 +1257,11 @@ def appsflyer_proxy(kind: str, app_id: str, report: str):
     if not token:
         return jsonify({"error": f"No AppsFlyer token is configured for {credential_label}. Ask the admin to add it."}), 422
 
+    route = f"/api/{kind}/export/app/{urllib.parse.quote(app_id, safe='')}/{report}/v5"
+    target = AF_HOST + route
     query = request.query_string.decode("utf-8", errors="ignore")
-    original_query = query
-    partner_protect360 = kind == "raw-data" and report in PROTECT360_PARTNER_REPORTS and credential_type in {"agency", "adnetwork"}
-    if partner_protect360:
-        # Agency/ad-network Protect360 Pull API has a different route and is
-        # UTC-only. Forward only parameters supported by that API; timezone and
-        # maximum_rows from the regular raw-data API otherwise cause failures.
-        incoming = urllib.parse.parse_qs(query, keep_blank_values=True)
-        allowed = {key: values[-1] for key, values in incoming.items() if key in {"from", "to", "event_name", "detect-from", "detect-to", "additional_fields"} and values}
-        if report == "blocked_installs_report" and "additional_fields" not in allowed:
-            allowed["additional_fields"] = "blocked_reason,blocked_reason_value,blocked_reason_rule,blocked_sub_reason,match_type,device_category"
-        if report == "detection" and "additional_fields" not in allowed:
-            allowed["additional_fields"] = "fraud_reason,fraud_sub_reason,detection_date,match_type,device_category"
-        query = urllib.parse.urlencode(allowed)
-        route = f"/api/adnets-data/v1/export/{urllib.parse.quote(report, safe='')}/app/{urllib.parse.quote(app_id, safe='')}"
-    else:
-        route = f"/api/{kind}/export/app/{urllib.parse.quote(app_id, safe='')}/{report}/v5"
-    target = AF_HOST + route + (("?" + query) if query else "")
+    if query:
+        target += "?" + query
     data_path, meta_path, cache_key = report_cache_paths(token, target)
     ttl = report_cache_ttl(kind, urllib.parse.parse_qs(query, keep_blank_values=True))
     meta = load_json(meta_path, {})
@@ -1362,65 +1299,19 @@ def appsflyer_proxy(kind: str, app_id: str, report: str):
                         "content_type": content_type,
                         "kind": kind,
                         "report": report,
-                        "route_mode": "partner-v1" if partner_protect360 else "raw-v5",
                     })
                 result = app.response_class(data, status=response.status, content_type=content_type)
                 result.headers["X-AF-Cache"] = "MISS"
-                result.headers["X-AF-Route"] = "partner-v1" if partner_protect360 else "raw-v5"
                 return result
         except urllib.error.HTTPError as exc:
-            primary_data = exc.read()
-            if partner_protect360:
-                # Some advertiser-issued tokens accept the regular v5 route
-                # even when used by a partner. Keep that as a compatibility
-                # fallback while partner-v1 remains primary for P360 tokens.
-                fallback_route = f"/api/raw-data/export/app/{urllib.parse.quote(app_id, safe='')}/{report}/v5"
-                fallback_target = AF_HOST + fallback_route + (("?" + original_query) if original_query else "")
-                fallback_request = urllib.request.Request(fallback_target, method="GET")
-                fallback_request.add_header("Authorization", "Bearer " + token)
-                fallback_request.add_header("Accept", "text/csv")
-                fallback_request.add_header("User-Agent", "Adsphire-P360-Hosted/1.0")
-                try:
-                    with urllib.request.urlopen(fallback_request, timeout=300) as response:
-                        data = response.read()
-                        content_type = response.headers.get("Content-Type", "text/csv; charset=utf-8")
-                        fetched = datetime.now(timezone.utc)
-                        save_bytes(data_path, data)
-                        save_json(meta_path, {
-                            "fetched_at": fetched.isoformat(),
-                            "fetched_at_epoch": fetched.timestamp(),
-                            "content_type": content_type,
-                            "kind": kind,
-                            "report": report,
-                            "route_mode": "raw-v5-fallback",
-                        })
-                        result = app.response_class(data, status=response.status, content_type=content_type)
-                        result.headers["X-AF-Cache"] = "MISS"
-                        result.headers["X-AF-Route"] = "raw-v5-fallback"
-                        return result
-                except urllib.error.HTTPError as fallback_exc:
-                    fallback_data = fallback_exc.read()
-                    if data_path.exists() and meta_path.exists() and fallback_exc.code in {403, 429, 500, 502, 503, 504}:
-                        cached = cached_report_response(data_path, meta_path, "STALE")
-                        if cached is not None:
-                            cached.headers["Warning"] = f'110 - "Protect360 routes returned {exc.code}/{fallback_exc.code}; serving saved data"'
-                            return cached
-                    primary_detail = primary_data.decode("utf-8", errors="replace")[:220].replace("\n", " ")
-                    fallback_detail = fallback_data.decode("utf-8", errors="replace")[:220].replace("\n", " ")
-                    return jsonify({"error": f"Protect360 partner route {exc.code}: {primary_detail}; raw v5 fallback {fallback_exc.code}: {fallback_detail}"}), fallback_exc.code
-                except Exception as fallback_exc:
-                    if data_path.exists() and meta_path.exists():
-                        cached = cached_report_response(data_path, meta_path, "STALE")
-                        if cached is not None:
-                            return cached
-                    return jsonify({"error": f"Protect360 partner route {exc.code}; raw v5 fallback error: {fallback_exc}"}), 502
             # Preserve dashboard availability when AppsFlyer rate-limits a report.
             if data_path.exists() and meta_path.exists() and exc.code in {403, 429, 500, 502, 503, 504}:
                 cached = cached_report_response(data_path, meta_path, "STALE")
                 if cached is not None:
                     cached.headers["Warning"] = f'110 - "AppsFlyer returned {exc.code}; serving saved data"'
                     return cached
-            return app.response_class(primary_data, status=exc.code, content_type=exc.headers.get("Content-Type", "text/plain; charset=utf-8"))
+            data = exc.read()
+            return app.response_class(data, status=exc.code, content_type=exc.headers.get("Content-Type", "text/plain; charset=utf-8"))
         except Exception as exc:
             if data_path.exists() and meta_path.exists():
                 cached = cached_report_response(data_path, meta_path, "STALE")
